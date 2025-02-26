@@ -26,10 +26,4 @@ $result = [System.Windows.Forms.MessageBox]::Show($form, $errorMessage, "Error",
 if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}]"
     Start-Sleep -Milliseconds 200
-
-    # Delete all .info files in the directory
-    $infoFiles = Get-ChildItem -Path $scriptDir -Filter "*.info"
-    foreach ($file in $infoFiles) {
-        Remove-Item -Path $file.FullName -Force
-    }
 }

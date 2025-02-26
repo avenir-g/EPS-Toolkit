@@ -15,19 +15,13 @@ add-type -name win -member $dllvar -namespace native
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 Set-Location -Path $scriptDir
 
-# Check for today's .info file
-$today = Get-Date -Format "yyyyMMdd"
-$infoFilePath = "$today.info"
+# Load variables from precheck.ps1
+. .\precheck.ps1
 
-if (-Not (Test-Path $infoFilePath)) {
-    # Load variables from precheck.ps1
-    . .\precheck.ps1
-
-    # Check the exit code of the last command
-    if ($LASTEXITCODE -ne 0) {
-        . .\errorHandler.ps1 $global:precheckError
-        exit 1
-    }
+# Check the exit code of the last command
+if ($LASTEXITCODE -ne 0) {
+    . .\errorHandler.ps1 $global:precheckError
+    exit 1
 }
 
 # List of variables to check
