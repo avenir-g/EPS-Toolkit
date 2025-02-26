@@ -128,10 +128,4 @@ Cap2Txt=$($Cap2TxtValue.Text)
 Printer=$($PrinterValue.Text)
 "@
     Set-Content -Path $iniFilePath -Value $iniContent
-
-    # Delete all .info files in the directory
-    $infoFiles = Get-ChildItem -Path $scriptDir -Filter "*.info"
-    foreach ($file in $infoFiles) {
-        Remove-Item -Path $file.FullName -Force
-    }
 }

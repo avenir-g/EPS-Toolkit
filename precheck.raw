@@ -39,11 +39,6 @@ foreach ($path in $paths) {
     }
 }
 
-# Generate .info file with today's date
-$today = Get-Date -Format "yyyyMMdd"
-$infoFilePath = "$today.info"
-New-Item -ItemType File -Path $infoFilePath -Force
-
 # Indicate success
 $global:precheckError = ""
 exit 0
