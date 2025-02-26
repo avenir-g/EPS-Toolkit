@@ -1,0 +1,137 @@
+﻿<#
+{
+    "Category": 3,
+    "Name": "Setup",
+    "Shortcut": "N/A",
+    "Info": "Configure the file directory paths for Shortcuts, Clavier+, and Cap2Text."
+}
+#>
+
+$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+add-type -name win -member $dllvar -namespace native
+[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
+
+$ErrorActionPreference = "SilentlyContinue"
+
+#FORM
+Add-Type -AssemblyName microsoft.VisualBasic
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+# Check if settings.ini exists and read values
+$iniFilePath = "settings.ini"
+$Main = ""
+$Clavier = ""
+$Cap2Txt = ""
+$Printer = ""
+
+if (Test-Path $iniFilePath) {
+    $iniContent = Get-Content $iniFilePath
+    foreach ($line in $iniContent) {
+        if ($line -match "^Main=(.*)$") {
+            $Main = $matches[1]
+        } elseif ($line -match "^Clavier\+=(.*)$") {
+            $Clavier = $matches[1]
+        } elseif ($line -match "^Cap2Txt=(.*)$") {
+            $Cap2Txt = $matches[1]
+        } elseif ($line -match "^Printer=(.*)$") {
+            $Printer = $matches[1]
+        }
+    }
+}
+
+$form10 = New-Object System.Windows.Forms.Form
+$form10.Text = 'Set File Directories'
+$form10.Size = New-Object System.Drawing.Size(510, 200)
+$form10.StartPosition = 'CenterScreen'
+
+$OKButton = New-Object System.Windows.Forms.Button
+$OKButton.Location = New-Object System.Drawing.Point(180, 130)
+$OKButton.Size = New-Object System.Drawing.Size(70, 23)
+$OKButton.Text = 'OK'
+$OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+$form10.AcceptButton = $OKButton
+$form10.Controls.Add($OKButton)
+
+$CancelButton = New-Object System.Windows.Forms.Button
+$CancelButton.Location = New-Object System.Drawing.Point(255, 130)
+$CancelButton.Size = New-Object System.Drawing.Size(70, 23)
+$CancelButton.Text = 'Cancel'
+$CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$form10.CancelButton = $CancelButton
+$form10.Controls.Add($CancelButton)
+
+$Label1 = New-Object System.Windows.Forms.Label
+$Label1.Location = New-Object System.Drawing.Point(35, 12)
+$Label1.Size = New-Object System.Drawing.Size(35, 20)
+$Label1.Text = 'Main'
+$form10.Controls.Add($Label1)
+
+$Label2 = New-Object System.Windows.Forms.Label
+$Label2.Location = New-Object System.Drawing.Point(16, 42)
+$Label2.Size = New-Object System.Drawing.Size(50, 20)
+$Label2.Text = 'Clavier+'
+$form10.Controls.Add($Label2)
+
+$Label3 = New-Object System.Windows.Forms.Label
+$Label3.Location = New-Object System.Drawing.Point(10, 72)
+$Label3.Size = New-Object System.Drawing.Size(60, 20)
+$Label3.Text = 'Cap2Text'
+$form10.Controls.Add($Label3)
+
+$Label4 = New-Object System.Windows.Forms.Label
+$Label4.Location = New-Object System.Drawing.Point(25, 102)
+$Label4.Size = New-Object System.Drawing.Size(40, 20)
+$Label4.Text = 'Printer'
+$form10.Controls.Add($Label4)
+
+$MainValue = New-Object System.Windows.Forms.TextBox
+$MainValue.Location = New-Object System.Drawing.Point(70, 10)
+$MainValue.Size = New-Object System.Drawing.Size(410, 20)
+$MainValue.Multiline = $false
+$MainValue.Text = $Main
+$form10.Controls.Add($MainValue)
+
+$ClavierValue = New-Object System.Windows.Forms.TextBox
+$ClavierValue.Location = New-Object System.Drawing.Point(70, 40)
+$ClavierValue.Size = New-Object System.Drawing.Size(410, 20)
+$ClavierValue.Multiline = $false
+$ClavierValue.Text = $Clavier
+$form10.Controls.Add($ClavierValue)
+
+$Cap2TxtValue = New-Object System.Windows.Forms.TextBox
+$Cap2TxtValue.Location = New-Object System.Drawing.Point(70, 70)
+$Cap2TxtValue.Size = New-Object System.Drawing.Size(410, 20)
+$Cap2TxtValue.Multiline = $false
+$Cap2TxtValue.Text = $Cap2Txt
+$form10.Controls.Add($Cap2TxtValue)
+
+$PrinterValue = New-Object System.Windows.Forms.TextBox
+$PrinterValue.Location = New-Object System.Drawing.Point(70, 100)
+$PrinterValue.Size = New-Object System.Drawing.Size(410, 20)
+$PrinterValue.Multiline = $false
+$PrinterValue.Text = $Printer
+$form10.Controls.Add($PrinterValue)
+
+$form10.Topmost = $true
+$MainValue.Select()
+$result10 = $form10.ShowDialog()
+
+# Generate settings.ini with new values
+if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
+    $iniContent = @"
+[Settings]
+Main=$($MainValue.Text)
+Clavier+=$($ClavierValue.Text)
+Cap2Txt=$($Cap2TxtValue.Text)
+Printer=$($PrinterValue.Text)
+"@
+    Set-Content -Path $iniFilePath -Value $iniContent
+
+    # Delete all .info files in the directory
+    $infoFiles = Get-ChildItem -Path $scriptDir -Filter "*.info"
+    foreach ($file in $infoFiles) {
+        Remove-Item -Path $file.FullName -Force
+    }
+}

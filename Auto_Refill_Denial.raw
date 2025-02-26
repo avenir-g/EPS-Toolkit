@@ -1,0 +1,563 @@
+﻿<#
+{
+    "Category": 2,
+    "Name": "Refill Denial",
+    "Shortcut": "Shift + F5",
+    "Info": "Auto-documents in patient profile, removes denied refill requests, and disables auto refills. [Start on Open Call Queue. Call Type: Patient]"
+}
+#>
+
+$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+add-type -name win -member $dllvar -namespace native
+[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Check for today's .info file
+$today = Get-Date -Format "yyyyMMdd"
+$infoFilePath = "$today.info"
+
+if (-Not (Test-Path $infoFilePath)) {
+    # Load variables from precheck.ps1
+    . .\precheck.ps1
+
+    # Check the exit code of the last command
+    if ($LASTEXITCODE -ne 0) {
+        . .\errorHandler.ps1 $global:precheckError
+        exit 1
+    }
+}
+
+# List of variables to check
+$variables = @{
+    "Main" = $Main
+    "Clavier" = $Clavier
+    "Cap2Txt" = $Cap2Txt
+    "SendKeys" = $SendKeys
+    "Printer" = $Printer
+}
+
+# Check if all necessary variables are defined
+foreach ($var in $variables.GetEnumerator()) {
+    if (-not $var.Value) {
+        $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
+        . ./errorHandler.ps1 $errorMessage
+        exit 1
+    }
+}
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-type -AssemblyName microsoft.VisualBasic
+
+Function Get-ScreenColor {
+
+        [CmdletBinding(DefaultParameterSetName='None')]
+
+        param(
+            [Parameter(
+                Mandatory=$true,
+                ParameterSetName="Pos"
+            )]
+            [Int]
+            $X,
+            [Parameter(
+                Mandatory=$true,
+                ParameterSetName="Pos"
+            )]
+            [Int]
+            $Y
+        )
+    
+        if ($PSCmdlet.ParameterSetName -eq 'None') {
+            $pos = [System.Windows.Forms.Cursor]::Position
+        } else {
+            $pos = New-Object psobject
+            $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
+            $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
+        }
+        $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
+        $bmp = New-Object System.Drawing.Bitmap(1,1)
+        $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+        $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
+        $pixel = $bmp.GetPixel(0,0)
+        $red = $pixel.R
+        $green = $pixel.G
+        $blue = $pixel.B
+        $result = New-Object psobject
+        if ($PSCmdlet.ParameterSetName -eq 'None') {
+            $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
+            $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
+        }
+        $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
+        return $RGB
+    }
+
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$form4 = New-Object System.Windows.Forms.Form
+$form4.Text = 'Enterprise Pharmacy System'
+$form4.Size = New-Object System.Drawing.Size(250,180)
+$form4.StartPosition = 'CenterScreen'
+
+$OKButton = New-Object System.Windows.Forms.Button
+$OKButton.Location = New-Object System.Drawing.Point(70,100)
+$OKButton.Size = New-Object System.Drawing.Size(70,23)
+$OKButton.Text = 'OK'
+$OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+$OKButton.Enabled = $false
+$form4.AcceptButton = $OKButton
+$form4.Controls.Add($OKButton)
+
+$CancelButton = New-Object System.Windows.Forms.Button
+$CancelButton.Location = New-Object System.Drawing.Point(145,100)
+$CancelButton.Size = New-Object System.Drawing.Size(70,23)
+$CancelButton.Text = 'Cancel'
+$CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$form4.CancelButton = $CancelButton
+$form4.Controls.Add($CancelButton)
+
+$Label1 = New-Object System.Windows.Forms.Label
+$Label1.Location = New-Object System.Drawing.Point(35,12)
+$Label1.Size = New-Object System.Drawing.Size(35,20)
+$Label1.Text = 'User:'
+$form4.Controls.Add($Label1)
+
+$Label2 = New-Object System.Windows.Forms.Label
+$Label2.Location = New-Object System.Drawing.Point(10,42)
+$Label2.Size = New-Object System.Drawing.Size(60,20)
+$Label2.Text = 'Password:'
+$form4.Controls.Add($Label2)
+
+$Label3 = New-Object System.Windows.Forms.Label
+$Label3.Location = New-Object System.Drawing.Point(20,72)
+$Label3.Size = New-Object System.Drawing.Size(50,20)
+$Label3.Text = 'Denials:'
+$form4.Controls.Add($Label3)
+
+$Label4 = New-Object System.Windows.Forms.Label
+$Label4.Location = New-Object System.Drawing.Point(15,90)
+$Label4.Size = New-Object System.Drawing.Size(40,40)
+$Label4.Text = 'D'
+$Label4.Font = New-Object System.Drawing.Font("Berlin Sans FB Demi",30,[System.Drawing.FontStyle]::Bold)
+$Label4.ForeColor = [System.Drawing.Color]::Red
+$form4.Controls.Add($Label4)
+
+$User = New-Object System.Windows.Forms.TextBox
+$User.Location = New-Object System.Drawing.Point(70,10)
+$User.Size = New-Object System.Drawing.Size(145,20) 
+$User.Multiline = $false
+$form4.Controls.Add($User)
+
+$Pass = New-Object System.Windows.Forms.MaskedTextBox
+$Pass.PasswordChar = '●'
+$Pass.Location = New-Object System.Drawing.Point(70,40)
+$Pass.Size = New-Object System.Drawing.Size(145,20) 
+$Pass.Multiline = $false
+$form4.Controls.Add($Pass)
+
+$Denials = New-Object System.Windows.Forms.TextBox
+$Denials.Location = New-Object System.Drawing.Point(70,70)
+$Denials.Size = New-Object System.Drawing.Size(145,20) 
+$Denials.Multiline = $false
+$form4.Controls.Add($Denials)
+
+function validateBoxesAndCombos(){
+    if ($User.Text -and $Pass.Text -and $Denials.Text){
+	    $OKButton.Enabled = $true
+    } else {
+        $OKButton.Enabled = $false
+    }
+}
+
+$User.Add_TextChanged({validateBoxesAndCombos})
+$Pass.Add_TextChanged({validateBoxesAndCombos})
+$Denials.Add_TextChanged({
+    validateBoxesAndCombos
+    if ($this.Text -match '\D') {
+            $this.Text = $this.Text -replace '\D'
+            if($tbox.Text.Length -gt 0){
+            $this.Focus()
+            $this.SelectionStart = $this.Text.Length
+            }
+        }
+})
+
+$form4.Topmost = $true
+$User.Select()
+
+$result4 = $form4.ShowDialog()
+
+$Auth = "[{Focus,0,Enterprise Pharmacy System}][{MouseMoveToFocus,100,93}][][{MouseButton,L}][{MouseMoveToFocus,50,146}][][{MouseButton,L}][]" + $User.Text + "[TAB][]" + $Pass.Text + "[ENTER]"
+
+if ($result4 -eq [System.Windows.Forms.DialogResult]::OK) {
+$CounterDone = 0
+1..$Denials.Text | % {
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,500,190}][{MouseButton,L}][][{MouseButton,L}][][TAB][][TAB]"
+    Start-sleep -Milliseconds 600
+### BEGIN CODE
+$timeout = New-TimeSpan -Seconds 7
+$endTime = (Get-Date).Add($timeout)
+$PreviousCall = ""
+$CurrentCallTask = ""
+do {
+    Set-Clipboard -Value " "
+    [System.Windows.Forms.SendKeys]::SendWait("^c")
+    Start-sleep -Milliseconds 100
+    $TaskRx = (Get-Clipboard).Split("`t")[5]
+    $CurrentCall = ((Get-Clipboard).Split("`t")[0,2] | ForEach-Object { $_.Trim() }) -join " "
+
+    if ($CurrentCall -eq $PreviousCall) {
+        # Display success message
+        . ./successHandler.ps1 "All Done!`nRemoved $CounterDone call(s)!"
+        exit
+    }
+
+    $PreviousCall = $CurrentCall
+
+    if (([String]$TaskRx -eq "Refill Request") -or ([String]$TaskRx -eq "Refill Denial") -or ([String]$TaskRx -eq "New Request Denial")) {
+        
+        [Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise")
+        [System.Windows.Forms.SendKeys]::SendWait("%{s}")
+
+        Start-sleep -Milliseconds 800
+        & $SendKeys Error " "
+        if ($? -eq $true) {
+            & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,500,190}][{MouseButton,L}][][{MouseButton,L}][][][TAB][][][TAB][][][DOWN]"
+            Start-sleep -Milliseconds 400
+            $result = 0
+            continue
+        } else {
+        $result = 1
+        break
+        Start-sleep -Milliseconds 300
+        }
+    }
+
+    if (([String]$TaskRx -ne "Refill Request") -or ([String]$TaskRx -ne "Refill Denial")) {
+        [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+        $result = 0
+        }
+    }
+until (($result -eq 1) -or ((Get-Date) -gt $endTime))
+
+Write-Host $result "POST"
+
+if($result -ne 1){ 
+    exit
+}
+### STOP CODE
+
+if ($result -eq 1) {
+    if ([String]$TaskRx -eq "Refill Request") {
+    Start-sleep -Milliseconds 700
+    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+    Start-sleep -Milliseconds 200
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,170,210}][{MouseButton,L}][][{MouseButton,L}]"
+    Start-sleep -Milliseconds 400
+    [System.Windows.Forms.SendKeys]::SendWait("^c")
+    $TargetRx = (Get-Clipboard).Split("`t")[4]
+    $PartialTargetName = ($TargetRx).Split(" ")[0]
+    $PartialTargetNumber = ($TargetRx -split '\s+' -match '\d')
+    $Today = Get-Date -Format "MM/dd/yyyy"
+    $NoteRx = "[CANCELED] [" + $Today + "] `n[" + $TargetRx + "]" | Set-Clipboard
+    Write-Host "Target: $TargetRx"
+    [System.Windows.Forms.SendKeys]::SendWait("%{x}")
+    Start-sleep -Milliseconds 1500
+    & $Clavier /sendkeys "[{Focus,0,Review*}][{MouseMoveToFocus,50,550}][{MouseButton,L}][][TAB][][ENTER]"
+    Start-sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait("%{7 2}")
+    Start-sleep -Milliseconds 1200
+    [System.Windows.Forms.SendKeys]::SendWait("%{d}")
+    Start-sleep -Milliseconds 100
+    [System.Windows.Forms.SendKeys]::SendWait("^v")
+    Start-sleep -Milliseconds 100
+    [System.Windows.Forms.SendKeys]::SendWait("%{s}")
+    Start-sleep -Milliseconds 1000
+    [System.Windows.Forms.SendKeys]::SendWait("%{8 2}")
+    $PixelSuccess = 0
+    $PixelSkip = 0
+    Do {
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,185,358}]"
+    Start-sleep -Milliseconds 100
+    $PixelRGB = Get-ScreenColor
+    if ($PixelRGB -eq "rgb(7, 165, 5)") {
+    $PixelSuccess = 1
+    Write-Host "Success"
+    }
+    if ($PixelRGB -eq "rgb(213, 213, 213)") {
+    $PixelSkip = 1
+    Write-Host "Skip"
+    }
+    } Until (($PixelSuccess -eq 1) -or ($PixelSkip -eq 1))
+
+    if ($PixelSkip -eq 0) {
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,650,360}][{MouseButton,L}][]"
+    Start-sleep -Milliseconds 400
+    [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+    [System.Windows.Forms.SendKeys]::SendWait("{PGDN 15}")
+    Start-sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait("^c")
+    $Autofills = (Get-Clipboard).Split("`t")[0]
+    Write-Host "Autofills: $Autofills"
+    [System.Windows.Forms.SendKeys]::SendWait("{PGUP 15}")
+
+    1..$Autofills | % {
+    Start-sleep -Milliseconds 50
+    [System.Windows.Forms.SendKeys]::SendWait("^c")
+    $CheckRx = (Get-Clipboard).Split("`t")[2]
+    Start-sleep -Milliseconds 20
+    Write-Host "$_ $CheckRx"
+    $POS = if ($_ -le 6) {$_} else {6}
+    $OffsetY = 380 + $POS * 20
+    $MouseFx = "[{Focus,0,*EPS/*}][{MouseMoveToFocus,700," + $OffsetY + "}][{MouseButton,L}][]"
+    if ( ($CheckRx -match $PartialTargetName) -and ($CheckRx -match $PartialTargetNumber) ) {
+    & $Clavier /sendkeys $MouseFx
+    Start-sleep -Milliseconds 200
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning "))) {
+        [System.Windows.Forms.SendKeys]::SendWait("~")
+        } else { continue }
+        Start-sleep -Milliseconds 200
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+    [System.Windows.Forms.SendKeys]::SendWait("~")
+    Start-sleep -Milliseconds 300
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+    [System.Windows.Forms.SendKeys]::SendWait("~")
+    Start-sleep -Milliseconds 300
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+    [System.Windows.Forms.SendKeys]::SendWait("~")
+    } else { continue }
+    } else { continue }
+    } else { continue }
+    Start-sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait("{r}")
+    Start-sleep -Milliseconds 200
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+    [System.Windows.Forms.SendKeys]::SendWait("~")
+    Start-sleep -Milliseconds 300
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+    [System.Windows.Forms.SendKeys]::SendWait("~")
+    Start-sleep -Milliseconds 300
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+    [System.Windows.Forms.SendKeys]::SendWait("~")
+    } else { continue }
+    } else { continue }
+    } else { continue }
+    if ($_ -eq $Autofills) {
+    return } else {
+    [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")}
+    } else {
+    if ($_ -eq $Autofills) {
+    return } else {
+    [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")}
+        }
+    }
+
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,180, 570}][{MouseButton,L}][]"
+    Start-sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait("%{s}")
+    Start-sleep -Milliseconds 1500
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Address"))) {
+    [Microsoft.VisualBasic.Interaction]::AppActivate("Address")
+    [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
+    } else { continue }
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Multiple"))) {
+    [Microsoft.VisualBasic.Interaction]::AppActivate("Multiple")
+    [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
+    Start-sleep -Milliseconds 100
+    [System.Windows.Forms.SendKeys]::SendWait("%{y}")
+    } else { continue }
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Review"))) {
+    [Microsoft.VisualBasic.Interaction]::AppActivate("Review")
+    [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+    [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+    [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+    [System.Windows.Forms.SendKeys]::SendWait("~")
+    } else { continue }
+    Start-sleep -Milliseconds 200
+
+    $PixelRefillSuccess = 0
+    Do {
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,231, 741}]"
+    Start-sleep -Milliseconds 100
+    $PixelRGB = Get-ScreenColor
+    if ($PixelRGB -eq "rgb(0, 0, 0)") {
+    $PixelRefillSuccess = 1
+    Write-Host "Success"
+    }
+    } Until ($PixelRefillSuccess -eq 1)
+        
+    }
+    [System.Windows.Forms.SendKeys]::SendWait("%{b}")
+    Start-sleep -Milliseconds 1200
+    [System.Windows.Forms.SendKeys]::SendWait("%{l}")
+    Start-sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait("%{y}")
+    [System.Windows.Forms.SendKeys]::SendWait("%{c}")
+    Start-sleep -Milliseconds 300
+    & $Clavier /sendkeys $Auth
+    $CounterDone ++
+    start-sleep -Milliseconds 500
+}
+    if (([String]$TaskRx -eq "Refill Denial") -or ([String]$TaskRx -eq "New Request Denial")) {
+    $Today = (Get-Clipboard).Split("`t")[9] 
+    Set-Clipboard " "
+    Start-sleep -Milliseconds 800
+    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+    Start-sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait("+{TAB}")
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,200,192}][{MouseButton,L}][][{MouseButton,L}]"
+    Start-sleep -Milliseconds 400
+    [System.Windows.Forms.SendKeys]::SendWait("^c")
+    $TargetRx = (Get-Clipboard).Split("`t")[1]
+    $NoteRx = "[DENIED] [" + $Today + "] `n[" + $TargetRx + "] `n" + (Get-Clipboard).Split("`t")[3] | foreach {$_.replace("%","")} | foreach {$_.replace("&","")} | Set-Clipboard
+    Write-Host "Target: $TargetRx"
+    [System.Windows.Forms.SendKeys]::SendWait("%{x}")
+    Start-sleep -Milliseconds 1500
+    & $Clavier /sendkeys "[{Focus,0,Review*}][{MouseMoveToFocus,50,550}][{MouseButton,L}][][TAB][][ENTER]"
+    Start-sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait("%{7 2}")
+    Start-sleep -Milliseconds 800
+    [System.Windows.Forms.SendKeys]::SendWait("%{d}")
+    Start-sleep -Milliseconds 100
+    [System.Windows.Forms.SendKeys]::SendWait("^v")
+    Start-sleep -Milliseconds 100
+    [System.Windows.Forms.SendKeys]::SendWait("%{s}")
+    Start-sleep -Milliseconds 1000
+    [System.Windows.Forms.SendKeys]::SendWait("%{8 2}")
+    $PixelSuccess = 0
+    $PixelSkip = 0
+    Do {
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,185,360}]"
+    Start-sleep -Milliseconds 100
+    $PixelRGB = Get-ScreenColor
+    if ($PixelRGB -eq "rgb(7, 165, 5)") {
+    $PixelSuccess = 1
+    Write-Host "Success"
+    }
+    if ($PixelRGB -eq "rgb(213, 213, 213)") {
+    $PixelSkip = 1
+    Write-Host "Skip"
+    }
+    } Until (($PixelSuccess -eq 1) -or ($PixelSkip -eq 1))
+
+    if ($PixelSkip -eq 0) {
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,650,360}][{MouseButton,L}][]"
+        Start-sleep -Milliseconds 400
+        [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+        [System.Windows.Forms.SendKeys]::SendWait("{PGDN 15}")
+        Start-sleep -Milliseconds 200
+        [System.Windows.Forms.SendKeys]::SendWait("^c")
+        $Autofills = (Get-Clipboard).Split("`t")[0]
+        Write-Host "Autofills: $Autofills"
+        [System.Windows.Forms.SendKeys]::SendWait("{PGUP 15}")
+
+        1..$Autofills | % {
+        Start-sleep -Milliseconds 50
+        [System.Windows.Forms.SendKeys]::SendWait("^c")
+        $CheckRx = (Get-Clipboard).Split("`t")[2]
+        Start-sleep -Milliseconds 20
+        Write-Host "$_ $CheckRx"
+        $POS = if ($_ -le 6) {$_} else {6}
+        $OffsetY = 380 + $POS * 20
+        $MouseFx = "[{Focus,0,*EPS/*}][{MouseMoveToFocus,700," + $OffsetY + "}][{MouseButton,L}][]"
+        if ($TargetRx -eq $CheckRx) {
+        & $Clavier /sendkeys $MouseFx
+        Start-sleep -Milliseconds 200
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning "))) {
+        [System.Windows.Forms.SendKeys]::SendWait("~")
+        } else { continue }
+        Start-sleep -Milliseconds 200
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+        [System.Windows.Forms.SendKeys]::SendWait("~")
+        Start-sleep -Milliseconds 300
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+        [System.Windows.Forms.SendKeys]::SendWait("~")
+        Start-sleep -Milliseconds 300
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+        [System.Windows.Forms.SendKeys]::SendWait("~")
+        } else { continue }
+        } else { continue }
+        } else { continue }
+        Start-sleep -Milliseconds 200
+        [System.Windows.Forms.SendKeys]::SendWait("{r}")
+        Start-sleep -Milliseconds 200
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+        [System.Windows.Forms.SendKeys]::SendWait("~")
+        Start-sleep -Milliseconds 300
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+        [System.Windows.Forms.SendKeys]::SendWait("~")
+        Start-sleep -Milliseconds 300
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Warning"))) {
+        [System.Windows.Forms.SendKeys]::SendWait("~")
+        } else { continue }
+        } else { continue }
+        } else { continue }
+        if ($_ -eq $Autofills) {
+        return } else {
+        [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")}
+        } else {
+        if ($_ -eq $Autofills) {
+        return } else {
+        [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")}
+            }
+        }
+
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,180, 570}][{MouseButton,L}][]"
+        Start-sleep -Milliseconds 200
+        [System.Windows.Forms.SendKeys]::SendWait("%{s}")
+        Start-sleep -Milliseconds 2000
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Address"))) {
+        [Microsoft.VisualBasic.Interaction]::AppActivate("Address")
+        [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
+        } else { continue }
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Multiple"))) {
+        [Microsoft.VisualBasic.Interaction]::AppActivate("Multiple")
+        [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
+        Start-sleep -Milliseconds 100
+        [System.Windows.Forms.SendKeys]::SendWait("%{y}")
+        } else { continue }
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Review"))) {
+        [Microsoft.VisualBasic.Interaction]::AppActivate("Review")
+        [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+        [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+        [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+        [System.Windows.Forms.SendKeys]::SendWait("~")
+        } else { continue }
+        Start-sleep -Milliseconds 200
+
+        $PixelRefillSuccess = 0
+        Do {
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,231, 741}]"
+        Start-sleep -Milliseconds 100
+        $PixelRGB = Get-ScreenColor
+        if ($PixelRGB -eq "rgb(0, 0, 0)") {
+        $PixelRefillSuccess = 1
+        Write-Host "Success"
+        }
+        } Until ($PixelRefillSuccess -eq 1)
+        
+    }
+    [System.Windows.Forms.SendKeys]::SendWait("%{b}")
+    Start-sleep -Milliseconds 1200
+    [System.Windows.Forms.SendKeys]::SendWait("%{l}")
+    Start-sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait("%{y}")
+    [System.Windows.Forms.SendKeys]::SendWait("%{c}")
+    Start-sleep -Milliseconds 300
+    & $Clavier /sendkeys $Auth
+    $CounterDone ++
+    start-sleep -Milliseconds 2200
+    }
+}
+if ($result -eq 0) {
+    exit
+    }
+}
+    # Display success message
+    . ./successHandler.ps1 "All Done!`nRemoved $CounterDone call(s)!"
+} else {
+    Write-Host 'Canceled'
+}

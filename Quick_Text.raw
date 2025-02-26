@@ -1,0 +1,258 @@
+<#
+{
+    "Category": 1,
+    "Name": "Auto Text Toolkit",
+    "Shortcut": "Shift + F4",
+    "Info": "Generates pre-programmed text for quicker data entry."
+}
+#>
+
+$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+add-type -name win -member $dllvar -namespace native
+[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Check for today's .info file
+$today = Get-Date -Format "yyyyMMdd"
+$infoFilePath = "$today.info"
+
+if (-Not (Test-Path $infoFilePath)) {
+    # Load variables from precheck.ps1
+    . .\precheck.ps1
+
+    # Check the exit code of the last command
+    if ($LASTEXITCODE -ne 0) {
+        . .\errorHandler.ps1 $global:precheckError
+        exit 1
+    }
+}
+
+# List of variables to check
+$variables = @{
+    "Main" = $Main
+    "Clavier" = $Clavier
+    "Cap2Txt" = $Cap2Txt
+    "SendKeys" = $SendKeys
+    "Printer" = $Printer
+}
+
+# Check if all necessary variables are defined
+foreach ($var in $variables.GetEnumerator()) {
+    if (-not $var.Value) {
+        $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
+        . ./errorHandler.ps1 $errorMessage
+        exit 1
+    }
+}
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+add-type -AssemblyName microsoft.VisualBasic
+
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Data Entry Form'
+$form.Size = New-Object System.Drawing.Size(300,230)
+$form.StartPosition = 'CenterScreen'
+
+$OKButton = New-Object System.Windows.Forms.Button
+$OKButton.Location = New-Object System.Drawing.Point(60,155)
+$OKButton.Size = New-Object System.Drawing.Size(75,23)
+$OKButton.Text = 'OK'
+$OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+$OKButton.TabIndex = 1;
+$form.AcceptButton = $OKButton
+$form.Controls.Add($OKButton)
+
+$CancelButton = New-Object System.Windows.Forms.Button
+$CancelButton.Location = New-Object System.Drawing.Point(150,155)
+$CancelButton.Size = New-Object System.Drawing.Size(75,23)
+$CancelButton.Text = 'Cancel'
+$CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$CancelButton.TabIndex = 2;
+$form.CancelButton = $CancelButton
+$form.Controls.Add($CancelButton)
+
+$label1 = New-Object System.Windows.Forms.Label
+$label1.Location = New-Object System.Drawing.Point(10,10)
+$label1.Size = New-Object System.Drawing.Size(280,20)
+$label1.Text = 'Please make a selection from the list below:'
+$form.Controls.Add($label1)
+
+$label3 = New-Object System.Windows.Forms.Label
+$label3.Location = New-Object System.Drawing.Point(10,120)
+$label3.Size = New-Object System.Drawing.Size(260,30)
+$form.Controls.Add($label3)
+
+$listBox = New-Object System.Windows.Forms.Listbox
+$listBox.Location = New-Object System.Drawing.Point(10,30)
+$listBox.Size = New-Object System.Drawing.Size(260,20)
+
+$listBox.SelectionMode = 'One'
+
+[void] $listBox.Items.Add('Fax')
+[void] $listBox.Items.Add('Brand')
+[void] $listBox.Items.Add('Generic')
+[void] $listBox.Items.Add('Days Supply')
+[void] $listBox.Items.Add('Today')
+[void] $listBox.Items.Add('PA Fax Reschedule')
+[void] $listBox.Items.Add('Wait')
+
+
+$listBox.Height = 90
+$listBox.TabIndex = 0;
+$listBox.add_SelectedIndexChanged({
+  if ($listBox.SelectedItem -eq "Fax") {
+    $label3.Text = "Target: [Log] [Third] `nQuick Text: Fax sent on [Today]"
+  } elseif ($listBox.SelectedItem -eq "Brand") {
+    $label3.Text = "Target: [Image] `nQuick Text: Use BRAND per insurance."
+  } elseif ($listBox.SelectedItem -eq "Generic") {
+    $label3.Text = "Target: [Image] [Enterprise]`nQuick Text: Use GENERIC per insurance."
+  } elseif ($listBox.SelectedItem -eq "Days Supply") {
+    $label3.Text = "Target: [Image] `nQuick Text: Max [X] Days Supply. Plan Limit."
+  } elseif ($listBox.SelectedItem -eq "Today") {
+    $label3.Text = "Target: [Log] [Third] `nQuick Text: [Today]"
+  } elseif ($listBox.SelectedItem -eq "PA Fax Reschedule") {
+    $label3.Text = "Target: Call Queue [Log] `nQuick Text: Fax sent on [Today] + [Reschedule Fx]"
+  } elseif ($listBox.SelectedItem -eq "Wait") {
+    $label3.Text = "Target: Call Queue [Log] `nQuick Text: Still waiting [Today] + [Reschedule Fx]"
+  } else {
+    $label3.Text = "Target:`nQuick Text:"
+  }
+})
+$form.Controls.Add($listBox)
+$form.Add_Shown({$listbox.SelectedIndex = 0})
+$form.Topmost = $true
+$result = $form.ShowDialog()
+
+function Get-TimeStamp {
+    
+    return "[{0:MM/dd/yy} {0:HH:mm:ss tt}]" -f (Get-Date)
+}
+
+if ($result -eq [System.Windows.Forms.DialogResult]::OK)
+{
+    $Terminal = hostname
+    $Script = Split-Path -leaf $PSCommandpath
+    $Fx = "[" + $listBox.SelectedItems + "]"
+    $FxCAP = $Fx.ToUpper()
+    Write-Output "$(Get-TimeStamp) $Terminal $Script $FxCAP" | Out-file \\P051873\users$\s1873c01\Desktop\Shortcuts\Shortcut.log -append
+
+    if ($listBox.SelectedItems -eq 'Fax'){
+
+    $Today = Get-Date -Format "MM/dd/yyyy"
+
+    $CB = "Fax sent on " + $Today + " [AG]"
+
+    & $SendKeys Log $CB
+    & $SendKeys Third $CB
+
+    } elseif ($listBox.SelectedItems -eq 'Brand'){
+
+    $CB = "Use BRAND per insurance."
+    
+    & $SendKeys Image $CB
+    } elseif ($listBox.SelectedItems -eq 'Generic'){
+    
+    $CB = "Use GENERIC per insurance"
+    
+    & $SendKeys Image $CB
+    & $SendKeys Enterprise $CB
+
+    } elseif ($listBox.SelectedItems -eq 'Days Supply'){
+
+        $form1 = New-Object System.Windows.Forms.Form
+        $form1.Text = 'Max Days Supply'
+        $form1.Size = New-Object System.Drawing.Size(300,150)
+        $form1.StartPosition = 'CenterScreen'
+
+        $OKButton = New-Object System.Windows.Forms.Button
+        $OKButton.Location = New-Object System.Drawing.Point(75,80)
+        $OKButton.Size = New-Object System.Drawing.Size(75,23)
+        $OKButton.Text = 'OK'
+        $OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $OKButton.TabIndex = 1;
+        $form1.AcceptButton = $OKButton
+        $form1.Controls.Add($OKButton)
+
+        $CancelButton = New-Object System.Windows.Forms.Button
+        $CancelButton.Location = New-Object System.Drawing.Point(150,80)
+        $CancelButton.Size = New-Object System.Drawing.Size(75,23)
+        $CancelButton.Text = 'Cancel'
+        $CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+        $CancelButton.TabIndex = 2;
+        $form1.CancelButton = $CancelButton
+        $form1.Controls.Add($CancelButton)
+
+        $label = New-Object System.Windows.Forms.Label
+        $label.Location = New-Object System.Drawing.Point(10,20)
+        $label.Size = New-Object System.Drawing.Size(280,20)
+        $label.Text = 'Max Days Supply:'
+        $form1.Controls.Add($label)
+
+        $textBox = New-Object System.Windows.Forms.TextBox
+        $textBox.Location = New-Object System.Drawing.Point(10,40)
+        $textBox.Size = New-Object System.Drawing.Size(265,20)
+        $textBox.Multiline = $false
+        $textbox.AcceptsReturn = $true
+        $textBox.ScrollBars = "Vertical"
+        $textBox.TabIndex = 0;
+        $form1.Controls.Add($textBox)
+
+        $form1.Topmost = $true
+
+        $result1 = $form1.ShowDialog()
+    
+        if ($result1 -eq [System.Windows.Forms.DialogResult]::OK) {
+        $MaxDays = New-Inputbox -prompt "Enter Max Days Supply:" -title "Max Days Supply"
+    
+        "Max " + $MaxDays + " Days Supply. Plan Limit."
+        } else {
+        Write-Host 'Canceled'
+        }
+
+    $MaxDays = $textBox.Text
+    
+    
+    $CB =  "Max " + $MaxDays + " Days Supply. Plan Limit."
+
+    & $SendKeys Image $CB
+
+    } elseif ($listBox.SelectedItems -eq 'Today'){
+
+    $Today = Get-Date -Format "MM/dd/yyyy"
+
+    $CB = $Today + " [AG]"
+
+    [System.Windows.Forms.SendKeys]::SendWait("{END}")
+    [System.Windows.Forms.SendKeys]::SendWait("$CB")
+
+    } elseif ($listBox.SelectedItems -eq 'PA Fax Reschedule'){
+
+    $Today = Get-Date -Format "MM/dd/yyyy"
+    $CB = "Fax sent on " + $Today + " [AG]"
+    $DOW = (Get-Date).DayOfWeek
+    $Date = (Get-date).AddDays(10).ToString('MM-dd-yyyy')
+    & $SendKeys Log "$CB{TAB}"
+    & $SendKeys Log "$Date{TAB}"
+    & $SendKeys Log "1P{TAB}{TAB}"
+    & $SendKeys Log " %s"
+
+    } elseif ($listBox.SelectedItems -eq 'Wait'){
+    
+    $Today = Get-Date -Format "MM/dd/yyyy"
+    $CB = "Still waiting " + $Today + " [AG]"
+    $DOW = (Get-Date).DayOfWeek
+    $Date = (Get-date).AddDays(7).ToString('MM-dd-yyyy')
+    & $SendKeys Log "$CB{TAB}"
+    & $SendKeys Log "$Date{TAB}"
+    & $SendKeys Log "1P{TAB}{TAB}"
+    & $SendKeys Log " %s"
+    } else {
+    Write-Host 'Other Selected'
+    }
+} else {
+    Write-Host 'Canceled'
+}

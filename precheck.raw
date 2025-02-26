@@ -1,0 +1,49 @@
+﻿# Check if settings.ini exists and read values
+$iniFilePath = "settings.ini"
+$Main = ""
+$Clavier = ""
+$Cap2Txt = ""
+$SendKeys = ""
+$Printer = ""
+
+if (Test-Path $iniFilePath) {
+    $iniContent = Get-Content $iniFilePath
+    foreach ($line in $iniContent) {
+        if ($line -match "^Main=(.*)$") {
+            $Main = $matches[1]
+        } elseif ($line -match "^Clavier\+=(.*)$") {
+            $Clavier = $matches[1]
+        } elseif ($line -match "^Cap2Txt=(.*)$") {
+            $Cap2Txt = $matches[1]
+        } elseif ($line -match "^Printer=(.*)$") {
+            $Printer = $matches[1]
+        }
+    }
+    $SendKeys = $Main + "SendKeys.bat"
+} else {
+    Write-Host "settings.ini not found!"
+    $global:precheckError = "settings.ini not found!"
+    exit 1
+}
+
+# Store the variables in an array
+$paths = @($Main, $Clavier, $Cap2Txt, $SendKeys)
+
+# Check each path
+foreach ($path in $paths) {
+    if (-Not (Test-Path $path)) {
+        $errorMessage = "Path does not exist: $path"
+        Write-Host $errorMessage
+        $global:precheckError = $errorMessage
+        exit 1
+    }
+}
+
+# Generate .info file with today's date
+$today = Get-Date -Format "yyyyMMdd"
+$infoFilePath = "$today.info"
+New-Item -ItemType File -Path $infoFilePath -Force
+
+# Indicate success
+$global:precheckError = ""
+exit 0

@@ -1,0 +1,68 @@
+﻿<#
+{
+    "Category": 3,
+    "Name": "Out of Stock",
+    "Shortcut": "F1",
+    "Info": "Auto-rejects out-of-stock items during Fill. [Next shipping day at 12 PM] [Use on Fill screen]"
+}
+#>
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Check for today's .info file
+$today = Get-Date -Format "yyyyMMdd"
+$infoFilePath = "$today.info"
+
+if (-Not (Test-Path $infoFilePath)) {
+    # Load variables from precheck.ps1
+    . .\precheck.ps1
+
+    # Check the exit code of the last command
+    if ($LASTEXITCODE -ne 0) {
+        . .\errorHandler.ps1 $global:precheckError
+        exit 1
+    }
+}
+
+# List of variables to check
+$variables = @{
+    "Main" = $Main
+    "Clavier" = $Clavier
+    "Cap2Txt" = $Cap2Txt
+    "SendKeys" = $SendKeys
+    "Printer" = $Printer
+}
+
+# Check if all necessary variables are defined
+foreach ($var in $variables.GetEnumerator()) {
+    if (-not $var.Value) {
+        $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
+        . ./errorHandler.ps1 $errorMessage
+        exit 1
+    }
+}
+
+$ErrorActionPreference = "Stop"
+add-type -AssemblyName microsoft.VisualBasic
+add-type -AssemblyName System.Windows.Forms
+[Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise")
+[System.Windows.Forms.SendKeys]::SendWait("%{j}")
+start-sleep -Milliseconds 450
+if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Fill"))) {
+    & $Clavier /sendkeys "[{Focus,0,Fill *}][Enter][Tab]"
+    $DOW = (Get-Date).DayOfWeek
+    if ($DOW -eq "Friday") {
+        $Date = (Get-date).AddDays(3).ToString('MM-dd-yyyy')
+    }
+    elseif ($DOW -eq "Saturday") {
+        $Date = (Get-date).AddDays(2).ToString('MM-dd-yyyy')
+    }
+    else {
+    $Date = (Get-date).AddDays(1).ToString('MM-dd-yyyy')
+    }
+    $CompileString = "[{Focus,0,Fill *}]" + $Date + "[{Wait, 30}][TAB][{Wait, 30}][TAB][{Wait, 30}]12P[{MouseMoveToFocus,100,410}][{MouseButton,L}][{Wait, 30}][t][TAB][{Wait, 10}][ALT+o]"
+    & $Clavier /sendkeys $CompileString
+
+} else { exit }

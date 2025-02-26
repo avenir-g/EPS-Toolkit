@@ -1,0 +1,413 @@
+﻿# Add necessary assemblies
+Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName System.Windows.Forms
+
+# Set the default gap size, border thickness, extra height, and grid margins
+$gridMargin = 25
+$gapSize = 20
+$borderThickness = 1
+$infoWindowMargin = 10
+
+# Function to retrieve code headers from a script file
+function Get-CodeHeaders {
+    param (
+        [string]$FilePath
+    )
+    $scriptContent = Get-Content -Path $FilePath -Raw
+    $headerPattern = '<#\s*{([^}]*)}\s*#>'
+    $matches = [regex]::Matches($scriptContent, $headerPattern)
+    $headers = @()
+    foreach ($match in $matches) {
+        $jsonText = "{ $($match.Groups[1].Value) }".Trim()
+        try {
+            $header = $jsonText | ConvertFrom-Json
+            $headers += [PSCustomObject]@{
+                CategoryNumber = [int]$header.Category
+                Name = $header.Name
+                Shortcut = $header.Shortcut
+                Info = $header.Info
+                FilePath = $FilePath
+            }
+        } catch {
+            # Handle conversion error
+        }
+    }
+    return $headers
+}
+
+# Collect all headers from the .ps1 files in the directory
+$scriptDirectory = $PSScriptRoot
+if (-not $scriptDirectory) {
+    $scriptDirectory = (Get-Location).Path
+}
+$allHeaders = @()
+$files = Get-ChildItem -Path $scriptDirectory -Filter *.ps1
+foreach ($file in $files) {
+    $headers = Get-CodeHeaders -FilePath $file.FullName
+    $allHeaders += $headers
+}
+
+# Define a mapping of category numbers to unique names
+$categoryNames = @{
+    1 = "Auto-Fill and Data Entry"
+    2 = "Queue Management"
+    3 = "Inventory & Rx Management"
+    4 = "Pharmacy Workflow Tools"
+}
+
+# Group headers by category
+$groupedHeaders = $allHeaders | Group-Object -Property CategoryNumber
+
+# Create a Grid to organize the sections
+$grid = New-Object System.Windows.Controls.Grid
+$grid.Margin = New-Object System.Windows.Thickness($gridMargin)
+
+# Function to add a column definition to the grid
+function AddGridColumn {
+    param (
+        [System.Windows.Controls.Grid]$grid,
+        [int]$width
+    )
+    $columnDefinition = New-Object System.Windows.Controls.ColumnDefinition
+    $columnDefinition.Width = [System.Windows.GridLength]::Auto
+    $null = $grid.ColumnDefinitions.Add($columnDefinition)
+}
+
+# Function to add a gap column definition to the grid
+function AddGapColumn {
+    param (
+        [System.Windows.Controls.Grid]$grid,
+        [int]$width
+    )
+    $gapColumnDefinition = New-Object System.Windows.Controls.ColumnDefinition
+    $gapColumnDefinition.Width = New-Object System.Windows.GridLength($width)
+    $null = $grid.ColumnDefinitions.Add($gapColumnDefinition)
+}
+
+# Function to add a row definition to the grid
+function AddGridRow {
+    param (
+        [System.Windows.Controls.Grid]$grid
+    )
+    $rowDefinition = New-Object System.Windows.Controls.RowDefinition
+    $rowDefinition.Height = [System.Windows.GridLength]::Auto
+    $null = $grid.RowDefinitions.Add($rowDefinition)
+}
+
+# Add the category title and table to the Grid
+function AddCategorySection {
+    param (
+        [string]$categoryTitle,
+        [array]$tableContent,
+        [int]$columnIndex
+    )
+    AddGridColumn -grid $grid -width 250
+    $titleLabel = New-Object System.Windows.Controls.Label
+    $titleLabel.Content = $categoryTitle
+    $titleLabel.FontSize = 16
+    $titleLabel.FontWeight = "Bold"
+    $titleLabel.Margin = New-Object System.Windows.Thickness(0, 0, 0, 10)
+    $titleLabel.Foreground = [System.Windows.Media.Brushes]::White
+    $titleLabel.Opacity = 1.0
+    [System.Windows.Controls.Grid]::SetColumn($titleLabel, $columnIndex)
+    [System.Windows.Controls.Grid]::SetRow($titleLabel, 0)
+    $null = $grid.Children.Add($titleLabel)
+    $rowIndex = 1
+    foreach ($row in $tableContent) {
+        AddGridRow -grid $grid
+        $rowBorder = New-Object System.Windows.Controls.Border
+        $rowBorder.BorderBrush = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Colors]::White)
+        $rowBorder.BorderBrush.Opacity = 0.5
+        $rowBorder.BorderThickness = New-Object System.Windows.Thickness(0, 0, 0, $borderThickness)
+        $rowBorder.Margin = New-Object System.Windows.Thickness(0, 0, 0, $gapSize)
+        $rowPanel = New-Object System.Windows.Controls.StackPanel
+        $rowPanel.Orientation = "Horizontal"
+        $nameLabel = New-Object System.Windows.Controls.Label
+        $nameLabel.Content = $row.Name
+        $nameLabel.FontWeight = "Bold"
+        $nameLabel.Width = 150
+        $nameLabel.HorizontalAlignment = "Left"
+        $nameLabel.Foreground = [System.Windows.Media.Brushes]::White
+        $nameLabel.Opacity = 1
+        $null = $rowPanel.Children.Add($nameLabel)
+        $shortcutLabel = New-Object System.Windows.Controls.Label
+        $shortcutLabel.Content = $row.Shortcut
+        $shortcutLabel.FontWeight = "Bold"
+        $shortcutLabel.Width = 100
+        $shortcutLabel.HorizontalContentAlignment = "Right"
+        $shortcutLabel.Foreground = [System.Windows.Media.Brushes]::White
+        $shortcutLabel.Opacity = 1.0
+        $null = $rowPanel.Children.Add($shortcutLabel)
+        $rowBorder.Child = $rowPanel
+        [System.Windows.Controls.Grid]::SetColumn($rowBorder, $columnIndex)
+        [System.Windows.Controls.Grid]::SetRow($rowBorder, $rowIndex++)
+        $null = $grid.Children.Add($rowBorder)
+
+        # Store the FilePath in the Tag property
+        $rowBorder.Tag = $row.FilePath
+
+        # Add click event handler to open the FilePath minimized
+        $rowBorder.AddHandler([System.Windows.UIElement]::MouseLeftButtonDownEvent, [System.Windows.Input.MouseButtonEventHandler]{
+            param ($sender, $e)
+            $filePath = $sender.Tag
+            if ($filePath) {
+                Start-Process -FilePath "powershell.exe" -ArgumentList "-File `"$filePath`"" -WindowStyle Minimized
+            } else {
+                Write-Host "FilePath is null or empty."
+            }
+        })
+    }
+}
+
+# Add sections for each category with gaps in between
+$columnIndex = 0
+foreach ($group in $groupedHeaders) {
+    $categoryNumber = [int]$group.Name
+    $categoryTitle = $categoryNames[$categoryNumber]
+    $tableContent = $group.Group
+    AddCategorySection -categoryTitle $categoryTitle -tableContent $tableContent -columnIndex $columnIndex
+    $columnIndex++
+    AddGapColumn -grid $grid -width $gapSize
+    $columnIndex++
+}
+
+# Calculate dynamic width and height
+$maxRows = 0
+foreach ($column in $grid.ColumnDefinitions) {
+    $columnRows = 0
+    foreach ($child in $grid.Children) {
+        if ([System.Windows.Controls.Grid]::GetColumn($child) -eq $grid.ColumnDefinitions.IndexOf($column)) {
+            $rowCount = [System.Windows.Controls.Grid]::GetRow($child)
+            if ($rowCount -gt $columnRows) {
+                $columnRows = $rowCount
+            }
+        }
+    }
+    if ($columnRows -gt $maxRows) {
+        $maxRows = $columnRows
+    }
+}
+
+# Calculate total height
+$totalHeight = 25 + $maxRows * (30 + $borderThickness) + ($maxRows - 1) * $gapSize
+# Calculate the total height including extra space
+$windowHeight = $totalHeight + ($gridMargin * 2)
+# Calculate the total width
+$totalWidth = 0
+$columnCount = 0
+$gapCount = 0
+foreach ($column in $grid.ColumnDefinitions) {
+    if ($column.Width.IsAbsolute) {
+        $totalWidth += $column.Width.Value
+    } elseif ($column.Width.IsAuto) {
+        $totalWidth += 250
+        $columnCount++
+    } else {
+        $gapCount++
+    }
+}
+
+# Adjust for column gaps
+$totalWidth += ($gapCount - 1) * $gapSize
+# Calculate the total width including extra space
+$windowWidth = $totalWidth + ($gridMargin * 2)
+
+# Create the first window
+$window1 = New-Object System.Windows.Window
+$window1.Title = "Dynamic Overlay"
+$window1.Width = $windowWidth
+$window1.Height = $windowHeight
+$window1.WindowStyle = [System.Windows.WindowStyle]::None
+$window1.AllowsTransparency = $true
+$window1.Background = [System.Windows.Media.Brushes]::Transparent
+$window1.Topmost = $true
+
+# Create a Border to achieve rounded corners
+$border1 = New-Object System.Windows.Controls.Border
+$border1.Background = [System.Windows.Media.Brushes]::Black
+$border1.Opacity = 0.87
+$border1.CornerRadius = New-Object System.Windows.CornerRadius(15)
+$border1.Margin = New-Object System.Windows.Thickness(0)
+$border1.Cursor = [System.Windows.Input.Cursors]::No
+$grid.Cursor = [System.Windows.Input.Cursors]::No
+$border1.Child = $grid
+$window1.Content = $border1
+
+# Create the second info window
+$window2 = New-Object System.Windows.Window
+$window2.Title = "Info Overlay"
+$window2.Width = 250 # Minimum width
+$window2.Height = 60 + ($infoWindowMargin * 2) # Title height + Row height (30) + info window margin * 2
+$window2.WindowStyle = [System.Windows.WindowStyle]::None
+$window2.AllowsTransparency = $true
+$window2.Background = [System.Windows.Media.Brushes]::Transparent
+$window2.Topmost = $true
+
+# Create a Border for the second window
+$border2 = New-Object System.Windows.Controls.Border
+$border2.Background = [System.Windows.Media.Brushes]::Black
+$border2.Opacity = 0.0 # Default opacity
+$border2.CornerRadius = New-Object System.Windows.CornerRadius(10)
+$border2.Margin = New-Object System.Windows.Thickness(0)
+$window2.Content = $border2
+
+# Create a Grid for the second window
+$grid2 = New-Object System.Windows.Controls.Grid
+$grid2.Margin = New-Object System.Windows.Thickness($infoWindowMargin)
+
+# Add row definitions to the grid
+$titleRowDefinition = New-Object System.Windows.Controls.RowDefinition
+$titleRowDefinition.Height = [System.Windows.GridLength]::Auto
+$null = $grid2.RowDefinitions.Add($titleRowDefinition)
+$infoRowDefinition = New-Object System.Windows.Controls.RowDefinition
+$infoRowDefinition.Height = [System.Windows.GridLength]::Auto
+$null = $grid2.RowDefinitions.Add($infoRowDefinition)
+
+# Add the title label
+$titleLabel = New-Object System.Windows.Controls.Label
+$titleLabel.Content = "Additional Info"
+$titleLabel.FontSize = 16
+$titleLabel.FontWeight = "Bold"
+$titleLabel.HorizontalAlignment = "Center"
+$titleLabel.Foreground = [System.Windows.Media.Brushes]::White
+$titleLabel.Margin = New-Object System.Windows.Thickness(0, 0, 0, 0) # Bottom margin set to 0
+[System.Windows.Controls.Grid]::SetColumnSpan($titleLabel, 2)
+[System.Windows.Controls.Grid]::SetRow($titleLabel, 0)
+$null = $grid2.Children.Add($titleLabel)
+
+# Add the dynamic label
+$dynamicLabel = New-Object System.Windows.Controls.Label
+$dynamicLabel.Content = "Hover to see more info :)"
+$dynamicLabel.HorizontalAlignment = "Center"
+$dynamicLabel.Foreground = [System.Windows.Media.Brushes]::White
+[System.Windows.Controls.Grid]::SetColumnSpan($dynamicLabel, 2)
+[System.Windows.Controls.Grid]::SetRow($dynamicLabel, 1)
+$null = $grid2.Children.Add($dynamicLabel)
+$border2.Child = $grid2
+
+# Function to update the dynamic label content
+function UpdateDynamicLabel {
+    param ($info)
+    if ($info) {
+        $dynamicLabel.Content = $info
+        $border2.Opacity = 0.87 # Set opacity to visible
+    } else {
+        $dynamicLabel.Content = "Hover to see more info :)"
+        $border2.Opacity = 0.0 # Set opacity to default
+    }
+}
+
+# Function to update the title label content
+function UpdateTitleLabel {
+    param ($name, $shortcut)
+    if ($name -and $shortcut) {
+        $titleLabel.Content = "$name ($shortcut)"
+    } elseif ($name) {
+        $titleLabel.Content = $name
+    } else {
+        $titleLabel.Content = "Additional Info"
+    }
+}
+
+# Function to dynamically update the width of the second window
+function UpdateWindowWidth {
+    $titleWidth = [System.Windows.Forms.TextRenderer]::MeasureText($titleLabel.Content, $titleLabel.Font).Width
+    $infoWidth = [System.Windows.Forms.TextRenderer]::MeasureText($dynamicLabel.Content, $dynamicLabel.Font).Width
+    $newWidth = [Math]::Max($titleWidth, $infoWidth) + ($infoWindowMargin * 2) - 50
+    $window2.Width = [Math]::Max($newWidth, 250)
+    $window2.Left = ($screenWidth - $window2.Width) / 2
+}
+
+# Function to report row, column, and $header.Info on mouse hover
+function ReportHover {
+    param ($sender, $e)
+    $element = $e.OriginalSource
+    if ($element -is [System.Windows.Controls.Border]) {
+        $row = [System.Windows.Controls.Grid]::GetRow($element)
+        $column = [System.Windows.Controls.Grid]::GetColumn($element)
+        $columnIndex = [math]::Floor($column / 2) # Adjust for column gaps
+        $headersInColumn = $groupedHeaders[$columnIndex].Group
+        if ($row -ge 1 -and $row -le $headersInColumn.Count) { # Adjust for starting row index
+            $header = $headersInColumn[$row - 1]
+            $info = $header.Info
+            $name = $header.Name
+            $shortcut = $header.Shortcut
+            UpdateDynamicLabel -info $info
+            UpdateTitleLabel -name $name -shortcut $shortcut
+            UpdateWindowWidth
+        } else {
+            UpdateDynamicLabel -info $null
+            UpdateTitleLabel -name "Additional Info"
+            UpdateWindowWidth
+        }
+    }
+}
+
+# Function to reset the title and dynamic label content on mouse leave
+function ResetLabels {
+    UpdateDynamicLabel -info $null
+    UpdateTitleLabel -name $null -shortcut $null
+    UpdateWindowWidth
+}
+
+# Add mouse enter and leave events to report row, column, and $header.Info
+foreach ($child in $grid.Children) {
+    if ($child -is [System.Windows.Controls.Border]) {
+        $child.AddHandler([System.Windows.UIElement]::MouseEnterEvent, [System.Windows.Input.MouseEventHandler]{
+            param ($sender, $e)
+            $sender.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Colors]::White)
+            $sender.Background.Opacity = 0.2 # Change background color on hover with opacity
+            $sender.Cursor = [System.Windows.Input.Cursors]::Hand # Change cursor to pointer
+            ReportHover -sender $sender -e $e
+        })
+        $child.AddHandler([System.Windows.UIElement]::MouseLeaveEvent, [System.Windows.Input.MouseEventHandler]{
+            param ($sender, $e)
+            $sender.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Colors]::Black) # Revert background color
+            $sender.Background.Opacity = 0.87 # Revert opacity
+            $sender.Cursor = [System.Windows.Input.Cursors]::No # Revert cursor
+            ResetLabels
+        })
+    }
+}
+
+# Position the first window at the bottom center of the screen
+$screenWidth = [System.Windows.SystemParameters]::PrimaryScreenWidth
+$screenHeight = [System.Windows.SystemParameters]::PrimaryScreenHeight
+
+# Calculate taskbar height if it is at the bottom
+$taskbarHeight = 0
+if ([System.Windows.Forms.Screen]::AllScreens.WorkingArea.Height -lt $screenHeight) {
+    $taskbarHeight = $screenHeight - [System.Windows.Forms.Screen]::AllScreens.WorkingArea.Height
+}
+
+# Set window position (centered horizontally, offset 25px from the bottom)
+$window1.Left = ($screenWidth - $window1.Width) / 2
+$window1.Top = $screenHeight - $window1.Height - $taskbarHeight - 25
+
+# Position the second window above the first window
+$window2.Left = ($screenWidth - $window2.Width) / 2
+$window2.Top = $window1.Top - $window2.Height - 10
+
+# Function to close both windows on click anywhere
+function CloseBothWindows {
+    $window1.Close()
+    $window2.Close()
+    $dispatcherFrame.Continue = $false
+}
+
+# Add MouseDown event handler to close both windows on click anywhere in the border
+$border1.Add_MouseDown({
+    CloseBothWindows
+})
+$border2.Add_MouseDown({
+    CloseBothWindows
+})
+
+# Show both windows
+$window1.Show()
+$window2.Show()
+
+# Keep the script running to maintain the console output
+$dispatcher = [System.Windows.Threading.Dispatcher]::CurrentDispatcher
+$dispatcherFrame = New-Object System.Windows.Threading.DispatcherFrame
+[System.Windows.Threading.Dispatcher]::PushFrame($dispatcherFrame)

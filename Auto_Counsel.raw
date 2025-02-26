@@ -1,0 +1,294 @@
+﻿<#
+{
+    "Category": 4,
+    "Name": "Auto Counsel",
+    "Shortcut": "F2",
+    "Info": "Auto-prepare counseling for scanned prescriptions at Will Call. [Start on Will Call screen after scanning Rxs]"
+}
+#>
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Check for today's .info file
+$today = Get-Date -Format "yyyyMMdd"
+$infoFilePath = "$today.info"
+
+if (-Not (Test-Path $infoFilePath)) {
+    # Load variables from precheck.ps1
+    . .\precheck.ps1
+
+    # Check the exit code of the last command
+    if ($LASTEXITCODE -ne 0) {
+        . .\errorHandler.ps1 $global:precheckError
+        exit 1
+    }
+}
+
+# List of variables to check
+$variables = @{
+    "Main" = $Main
+    "Clavier" = $Clavier
+    "Cap2Txt" = $Cap2Txt
+    "SendKeys" = $SendKeys
+    "Printer" = $Printer
+}
+
+# Check if all necessary variables are defined
+foreach ($var in $variables.GetEnumerator()) {
+    if (-not $var.Value) {
+        $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
+        . ./errorHandler.ps1 $errorMessage
+        exit 1
+    }
+}
+
+Add-type -AssemblyName Microsoft.VisualBasic
+Add-Type -AssemblyName System.Windows.Forms
+
+Function Get-ScreenColor {
+
+    [CmdletBinding(DefaultParameterSetName = 'None')]
+
+    param(
+        [Parameter(
+            Mandatory = $true,
+            ParameterSetName = "Pos"
+        )]
+        [Int]
+        $X,
+        [Parameter(
+            Mandatory = $true,
+            ParameterSetName = "Pos"
+        )]
+        [Int]
+        $Y
+    )
+    
+    if ($PSCmdlet.ParameterSetName -eq 'None') {
+        $pos = [System.Windows.Forms.Cursor]::Position
+    }
+    else {
+        $pos = New-Object psobject
+        $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
+        $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
+    }
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
+    $bmp = New-Object System.Drawing.Bitmap(1, 1)
+    $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+    $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
+    $pixel = $bmp.GetPixel(0, 0)
+    $red = $pixel.R
+    $green = $pixel.G
+    $blue = $pixel.B
+    $result = New-Object psobject
+    if ($PSCmdlet.ParameterSetName -eq 'None') {
+        $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
+        $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
+    }
+    $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
+    return $RGB
+}
+
+Function Get-TimeStamp {
+    
+    return "[{0:MM/dd/yy} {0:hh:mm:ss tt}]" -f (Get-Date)
+}
+
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,620,140}][{MouseButton,L}][]"
+Start-sleep -Milliseconds 50
+[System.Windows.Forms.SendKeys]::SendWait("{TAB}")
+[System.Windows.Forms.SendKeys]::SendWait("{PGUP 2}")
+
+$Total = 0
+$Sell = 0
+$Required = 0
+$PreviousRx = ""
+$done = $false
+$CurrentRxStatus = ""
+
+Do {
+    [System.Windows.Forms.SendKeys]::SendWait("^c")
+    $CurrentRxStatus = (Get-Clipboard).Split("`t")[13]
+    $CurrentRx = (Get-Clipboard).Split("`t")[0, 4, 5]
+    $CurrentRequired = (Get-Clipboard).Split("`t")[9]
+
+    if ([string]$PreviousRx -eq $CurrentRx) {
+        $done = $true
+        break
+    }
+
+    $CurrentRxSell = (Get-Clipboard).Split("`t")[1]
+
+    if ([string]$CurrentRxSell -eq "True") {
+        $Sell++
+        Start-sleep -Milliseconds 8
+        if ([string]$CurrentRequired -match "Required") {
+            $Required++
+        }
+    }
+
+    $Total++
+    $PreviousRx = $CurrentRx
+    Write-Host "$Total $CurrentRx"
+
+    [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+    Write-Host "System-Send-Key: {DOWN}"
+} Until ($done)
+
+Write-Host "Total: $Total"
+Write-Host "Sell: $Sell"
+Write-Host "Required: $Required"
+
+$Scripts = $Sell
+
+if ($Sell -eq 0) {
+    EXIT
+}
+
+if ($CurrentRxStatus -match "Halt") {
+    [System.Windows.Forms.SendKeys]::SendWait("{UP}")
+    Write-Host "System-Send-Key: {UP}"
+}
+
+[Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise")
+[System.Windows.Forms.SendKeys]::SendWait("%{o}")
+Start-sleep -Milliseconds 150
+Write-Host "==== PRE-CHECK ===="
+
+$MTMSuccess = 0
+$MTMSkip = 0
+
+Do {
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
+    Start-sleep -Milliseconds 10
+    $PixelRGB = Get-ScreenColor
+
+    if ($PixelRGB -eq "rgb(241, 243, 241)") {
+        Continue
+    }
+
+    if ($PixelRGB -eq "rgb(0, 0, 0)") {
+        $MTMSkip = 1
+    }
+
+    if ($PixelRGB -eq "rgb(168, 170, 168)") {
+        $MTMSkip = 1
+    }
+
+    if ($PixelRGB -eq "rgb(0, 178, 0)") {
+        $MTMSuccess = 1
+    }
+
+} Until (($MTMSuccess -eq 1) -or ($MTMSkip -eq 1))
+
+Start-sleep -Milliseconds 300
+
+if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
+    & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
+    Write-Host "Clav-Send-Key: [{Focus,0,Information*}][ENTER]"
+    Start-sleep -Milliseconds 200
+}
+if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
+    & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
+    Write-Host "Clav-Send-Key: [{Focus,0,Message*}][ENTER]"
+    Start-sleep -Milliseconds 200
+}
+if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
+    & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
+    Write-Host "Clav-Send-Key: [{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
+    Start-sleep -Milliseconds 200
+}
+
+Start-sleep -Milliseconds 100
+if ($MTMSuccess -eq 1) {
+    & $Clavier /sendkeys "[{Focus,0,MTM*}][Alt+C]"
+    Write-Host "Clav-Send-Key: [{Focus,0,MTM*}][Alt+C]"
+    Start-sleep -Milliseconds 200
+}
+
+Start-sleep -Milliseconds 200
+
+$CheckStop = 0
+$Processed = 0
+Do {
+    #Check Status 1
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,29,385}]"
+    Start-sleep -Milliseconds 10
+    $PixelRGB1 = Get-ScreenColor
+    #Stop if green
+    if ($PixelRGB1 -eq "rgb(7, 165, 5)") {
+        $CheckStop = 1
+    }
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+l][][Alt+x]"
+    Start-sleep -Milliseconds 200
+    $Processed ++
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
+        & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
+        Start-sleep -Milliseconds 200
+    }
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
+        & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
+        Start-sleep -Milliseconds 200
+    }
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
+        & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
+        Start-sleep -Milliseconds 200
+    }
+    if ($Processed -eq $Sell) {
+        $CheckStop = 1
+    }
+
+    #Check Status 2
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,29,385}]"
+    Start-sleep -Milliseconds 10
+    $PixelRGB2 = Get-ScreenColor
+
+    if ($PixelRGB2 -ne "rgb(7, 165, 5)") {
+        Continue
+    }
+
+    if ($PixelRGB2 -eq "rgb(7, 165, 5)") {
+        $CheckStop = 1
+    }
+
+} Until (($CheckStop -eq 1))
+
+if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
+    & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
+    Start-sleep -Milliseconds 200
+}
+if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
+    & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
+    Start-sleep -Milliseconds 200
+}
+if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
+    & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
+    Start-sleep -Milliseconds 200
+}
+
+if ($CheckStop -eq 1) {
+    if ($Required -eq 0) {
+        EXIT
+    }
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+C]"
+    Start-sleep -Milliseconds 400
+}
+else {
+    EXIT
+}
+
+if ($Required -eq 0) {
+    EXIT
+}
+
+function set_AudioLevel($audioLevel) { $wshShell = new-object -com wscript.shell; 1..50 | % { $wshShell.SendKeys([char]174) }; $audioLevel = $audioLevel / 2; 1..$audioLevel | % { $wshShell.SendKeys([char]175) } }
+set_AudioLevel 100
+if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise Pharmacy System"))) {
+    $Audio = $Main + "Audio\beep-8.wav"
+    (New-Object Media.SoundPlayer $Audio).PlaySync()
+}
+else { continue }
+
+# Read-Host -Prompt "Press Enter to continue..."

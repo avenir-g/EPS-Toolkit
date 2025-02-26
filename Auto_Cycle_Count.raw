@@ -1,0 +1,317 @@
+﻿$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+add-type -name win -member $dllvar -namespace native
+[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Check for today's .info file
+$today = Get-Date -Format "yyyyMMdd"
+$infoFilePath = "$today.info"
+
+if (-Not (Test-Path $infoFilePath)) {
+    # Load variables from precheck.ps1
+    . .\precheck.ps1
+
+    # Check the exit code of the last command
+    if ($LASTEXITCODE -ne 0) {
+        . .\errorHandler.ps1 $global:precheckError
+        exit 1
+    }
+}
+
+# List of variables to check
+$variables = @{
+    "Main" = $Main
+    "Clavier" = $Clavier
+    "Cap2Txt" = $Cap2Txt
+    "SendKeys" = $SendKeys
+    "Printer" = $Printer
+}
+
+# Check if all necessary variables are defined
+foreach ($var in $variables.GetEnumerator()) {
+    if (-not $var.Value) {
+        $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
+        . ./errorHandler.ps1 $errorMessage
+        exit 1
+    }
+}
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-type -AssemblyName microsoft.VisualBasic
+
+Function Get-ScreenColor {
+
+    [CmdletBinding(DefaultParameterSetName = 'None')]
+
+    param(
+        [Parameter(
+            Mandatory = $true,
+            ParameterSetName = "Pos"
+        )]
+        [Int]
+        $X,
+        [Parameter(
+            Mandatory = $true,
+            ParameterSetName = "Pos"
+        )]
+        [Int]
+        $Y
+    )
+    
+    if ($PSCmdlet.ParameterSetName -eq 'None') {
+        $pos = [System.Windows.Forms.Cursor]::Position
+    }
+    else {
+        $pos = New-Object psobject
+        $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
+        $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
+    }
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
+    $bmp = New-Object System.Drawing.Bitmap(1, 1)
+    $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+    $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
+    $pixel = $bmp.GetPixel(0, 0)
+    $red = $pixel.R
+    $green = $pixel.G
+    $blue = $pixel.B
+    $result = New-Object psobject
+    if ($PSCmdlet.ParameterSetName -eq 'None') {
+        $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
+        $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
+    }
+    $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
+    return $RGB
+}
+
+$Prog = $Cap2Txt
+if (! (ps | ? {$_.path -eq $Prog})) {
+& $Prog
+Start-sleep -Milliseconds 1500
+}
+
+#CHECKPOINT: CYCLE COUNT
+Set-Clipboard " "
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,673,132}][Win + Shift + Alt + Q][][{MouseMoveBy,142,22}][][][ENTER]"
+Start-sleep -Milliseconds 500
+$Checkpoint = Get-Clipboard
+Start-sleep -Milliseconds 20
+
+if (-Not ($Checkpoint -eq "Cycle Count")) {
+    . ./errorHandler.ps1 "Not on Cycle Count Queue!`n[Ctrl + W]"
+    exit
+}
+
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$form7 = New-Object System.Windows.Forms.Form
+$form7.Text = 'Enterprise Pharmacy System'
+$form7.Size = New-Object System.Drawing.Size(250,150)
+$form7.StartPosition = 'CenterScreen'
+
+$OKButton = New-Object System.Windows.Forms.Button
+$OKButton.Location = New-Object System.Drawing.Point(70,70)
+$OKButton.Size = New-Object System.Drawing.Size(70,23)
+$OKButton.Text = 'OK'
+$OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+$OKButton.Enabled = $false
+$form7.AcceptButton = $OKButton
+$form7.Controls.Add($OKButton)
+
+$CancelButton = New-Object System.Windows.Forms.Button
+$CancelButton.Location = New-Object System.Drawing.Point(145,70)
+$CancelButton.Size = New-Object System.Drawing.Size(70,23)
+$CancelButton.Text = 'Cancel'
+$CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$form7.CancelButton = $CancelButton
+$form7.Controls.Add($CancelButton)
+
+$Label1 = New-Object System.Windows.Forms.Label
+$Label1.Location = New-Object System.Drawing.Point(35,12)
+$Label1.Size = New-Object System.Drawing.Size(35,20)
+$Label1.Text = 'User:'
+$form7.Controls.Add($Label1)
+
+$Label2 = New-Object System.Windows.Forms.Label
+$Label2.Location = New-Object System.Drawing.Point(10,42)
+$Label2.Size = New-Object System.Drawing.Size(60,20)
+$Label2.Text = 'Password:'
+$form7.Controls.Add($Label2)
+
+$Label4 = New-Object System.Windows.Forms.Label
+$Label4.Location = New-Object System.Drawing.Point(15,60)
+$Label4.Size = New-Object System.Drawing.Size(40,40)
+$Label4.Text = 'C'
+$Label4.Font = New-Object System.Drawing.Font("Berlin Sans FB Demi",30,[System.Drawing.FontStyle]::Bold)
+$Label4.ForeColor = [System.Drawing.Color]::Blue
+$form7.Controls.Add($Label4)
+
+$User = New-Object System.Windows.Forms.TextBox
+$User.Location = New-Object System.Drawing.Point(70,10)
+$User.Size = New-Object System.Drawing.Size(145,20) 
+$User.Multiline = $false
+$form7.Controls.Add($User)
+
+$Pass = New-Object System.Windows.Forms.MaskedTextBox
+$Pass.PasswordChar = '●'
+$Pass.Location = New-Object System.Drawing.Point(70,40)
+$Pass.Size = New-Object System.Drawing.Size(145,20) 
+$Pass.Multiline = $false
+$form7.Controls.Add($Pass)
+
+
+function validateBoxesAndCombos(){
+    if ($User.Text -and $Pass.Text){
+	    $OKButton.Enabled = $true
+    } else {
+        $OKButton.Enabled = $false
+    }
+}
+
+$User.Add_TextChanged({validateBoxesAndCombos})
+$Pass.Add_TextChanged({validateBoxesAndCombos})
+
+
+$form7.Topmost = $true
+$User.Select()
+
+$result7 = $form7.ShowDialog()
+
+if ($result7 -eq [System.Windows.Forms.DialogResult]::OK) {
+$CounterDone = 0
+
+$Auth = "[{Focus,0,Enterprise Pharmacy System}][{MouseMoveToFocus,100,93}][][{MouseButton,L}][{MouseMoveToFocus,50,146}][][{MouseButton,L}][]" + $User.Text + "[TAB][]" + $Pass.Text + "[ENTER]"
+
+$PreviousRx = ""
+$Skipped = 0
+$exit = 0
+
+Do {
+    #Focus Queue
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,550,270}][{MouseButton,L}][]"
+    Start-sleep -Milliseconds 200
+
+    #Check Queue
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,550,270}]"
+    Start-sleep -Milliseconds 10
+    $PixelRGB = Get-ScreenColor
+
+    if ($PixelRGB -ne "rgb(206, 225, 242)") {
+        exit
+    }
+
+    Write-Host "=== MASTER LOOP[$CounterDone] START ==="
+
+    if ($Skipped -ge 1) {
+        1..$Skipped | % {
+        Write-Host "Run Skipped Loop $_"
+            if ($_ -eq 1) {
+                & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,550,270}][{MouseButton,L}][][Down]"
+                Start-sleep -Milliseconds 200
+            }
+            if ($_ -gt 1) {
+                & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Down]"
+                Start-sleep -Milliseconds 50
+            }
+        }
+    }
+
+    Start-sleep -Milliseconds 500
+
+    $TargetSuccess = 0
+
+    Do {
+        [System.Windows.Forms.SendKeys]::SendWait("^c")
+        Start-sleep -Milliseconds 20
+        $CurrentRx = (Get-Clipboard).Split("`t")[8]
+        
+        if (($CurrentRx -eq $PreviousRx)) {
+            $exit = 1
+            . ./successHandler.ps1 "All Done!`nRemoved $CounterDone cycle count(s)!"
+            exit
+        }
+
+        $PreviousRx = $CurrentRx
+        Set-Clipboard " "
+
+        [System.Windows.Forms.SendKeys]::SendWait("%{r}")
+        Start-sleep -Milliseconds 200        
+        & $Clavier /sendkeys $Auth
+        Start-sleep -Milliseconds 1500
+        
+        # Call the sendkeys batch script
+        & $SendKeys Error " "
+
+        # Check the exit code of the sendkeys batch script
+        $exitCode = $LASTEXITCODE
+
+        if ($exitCode -eq 0) {
+            Start-Sleep -Milliseconds 200
+            & $Clavier /sendkeys "[{Focus,0,*EPS/*}][][Shift + TAB][][Shift + TAB][][Down]"
+            Start-Sleep -Milliseconds 500
+            $Skipped++
+            $TargetSuccess = 0
+            continue
+        }
+
+        if ($exitCode -ne 0) {
+            $TargetSuccess = 1
+            break
+        }
+    } Until ($TargetSuccess -eq 1)
+    Start-sleep -Milliseconds 500
+
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,300,145}][{MouseButton,L}][Ctrl + C]"
+    Start-sleep -Milliseconds 300
+    $DrugName = (Get-Clipboard).Split("`t")[1]
+    Start-sleep -Milliseconds 500
+    $DrugInfo = "[{Focus,0,*EPS/*}][Alt + I][][DOWN][][RIGHT][][ENTER][{Focus,300,Package*}][Shift + Tab][][Space][][TAB][]" + $DrugName + "[][ENTER]"
+    & $Clavier /sendkeys $DrugInfo
+    Start-sleep -Milliseconds 1500
+    & $Clavier /sendkeys "[{Focus,0,Package*}][Ctrl + C][Alt + S]"
+    Start-sleep -Milliseconds 200
+    $NDC = (Get-Clipboard).Split("`t")[2]
+    Start-sleep -Milliseconds 200
+    $GetOnHand = "[{Focus,0,*EPS/*}][{MouseMoveToFocus,549,631}][Win + Shift + Alt + Q][][{MouseMoveBy,129,23}][][][ENTER]"
+    & $Clavier /sendkeys $GetOnHand
+    Start-sleep -Milliseconds 500
+    $OnHand = Get-Clipboard
+    Write-Host $DrugName $NDC $OnHand
+    [System.Windows.Forms.SendKeys]::SendWait("%{b}")
+    if ([int]$OnHand -lt 0) {
+        [System.Windows.Forms.SendKeys]::SendWait("%{b}")
+        $Skipped++
+        Start-sleep -Milliseconds 200
+        continue
+    }
+    Start-sleep -Milliseconds 100
+    $Submit = "[{Focus,0,*EPS/*}]" + $NDC + "[Enter][]" + $OnHand + "[][TAB][][Alt + c]"
+    & $Clavier /sendkeys $Submit
+    Start-sleep -Milliseconds 400
+    pause
+    & $Clavier /sendkeys $Auth
+    start-sleep -Milliseconds 800
+
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Mismatch"))) {
+        & $Clavier /sendkeys "[{Focus,0,Mismatch*}][][Alt+N]"
+        Start-sleep -Milliseconds 300
+        [System.Windows.Forms.SendKeys]::SendWait("%{b}")
+        $Skipped++
+        Start-sleep -Milliseconds 400
+        continue
+    }
+    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Unapplied"))) {
+        & $Clavier /sendkeys "[{Focus,0,Unapplied*}][][ENTER]"
+        Start-sleep -Milliseconds 100
+    }
+    start-sleep -Milliseconds 800
+    $CounterDone++
+} Until ($exit -eq 1)
+    # Display success message
+    . ./successHandler.ps1 "All Done!`nRemoved $CounterDone cycle count(s)!"
+} else {
+    Write-Host 'Canceled'
+}

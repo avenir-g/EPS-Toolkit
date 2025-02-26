@@ -1,0 +1,35 @@
+﻿param (
+    [string]$errorMessage
+)
+
+Add-Type -AssemblyName System.Windows.Forms
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Load variables from precheck.ps1
+. .\precheck.ps1
+
+# Create a new form
+$form = New-Object System.Windows.Forms.Form
+$form.Topmost = $true
+$form.StartPosition = "CenterScreen"
+
+& $Clavier /sendkeys "[{Focus,100,*Error*}]"
+Start-Sleep -Milliseconds 50
+
+# Display the error message in a topmost popup window with focus
+$result = [System.Windows.Forms.MessageBox]::Show($form, $errorMessage, "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+
+# Run additional code after "OK" is clicked
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}]"
+    Start-Sleep -Milliseconds 200
+
+    # Delete all .info files in the directory
+    $infoFiles = Get-ChildItem -Path $scriptDir -Filter "*.info"
+    foreach ($file in $infoFiles) {
+        Remove-Item -Path $file.FullName -Force
+    }
+}

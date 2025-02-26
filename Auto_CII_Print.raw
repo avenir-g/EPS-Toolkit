@@ -1,0 +1,195 @@
+﻿<# 
+{
+    "Category": 3,
+    "Name": "CII Print",
+    "Shortcut": "F3",
+    "Info": "Generates and prints a report of on-hand CII in the Fill Queue. [Start on Fill Queue screen]"
+}
+#>
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Check for today's .info file
+$today = Get-Date -Format "yyyyMMdd"
+$infoFilePath = "$today.info"
+
+if (-Not (Test-Path $infoFilePath)) {
+    # Load variables from precheck.ps1
+    . .\precheck.ps1
+
+    # Check the exit code of the last command
+    if ($LASTEXITCODE -ne 0) {
+        . .\errorHandler.ps1 $global:precheckError
+        exit 1
+    }
+}
+
+# List of variables to check
+$variables = @{
+    "Main" = $Main
+    "Clavier" = $Clavier
+    "Cap2Txt" = $Cap2Txt
+    "SendKeys" = $SendKeys
+    "Printer" = $Printer
+}
+
+# Check if all necessary variables are defined
+foreach ($var in $variables.GetEnumerator()) {
+    if (-not $var.Value) {
+        $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
+        . ./errorHandler.ps1 $errorMessage
+        exit 1
+    }
+}
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+add-type -AssemblyName microsoft.VisualBasic
+
+$Prog = $Cap2Txt
+if (! (ps | ? { $_.path -eq $Prog })) {
+    & $Prog
+    Start-sleep -Milliseconds 2000
+}
+
+Function Get-ScreenColor {
+    [CmdletBinding(DefaultParameterSetName = 'None')]
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = "Pos")]
+        [Int] $X,
+        [Parameter(Mandatory = $true, ParameterSetName = "Pos")]
+        [Int] $Y
+    )
+    
+    if ($PSCmdlet.ParameterSetName -eq 'None') {
+        $pos = [System.Windows.Forms.Cursor]::Position
+    } else {
+        $pos = New-Object psobject
+        $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
+        $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
+    }
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
+    $bmp = New-Object System.Drawing.Bitmap(1, 1)
+    $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+    $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
+    $pixel = $bmp.GetPixel(0, 0)
+    $red = $pixel.R
+    $green = $pixel.G
+    $blue = $pixel.B
+    $result = New-Object psobject
+    if ($PSCmdlet.ParameterSetName -eq 'None') {
+        $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
+        $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
+    }
+    $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
+    return $RGB
+}
+
+#CHECKPOINT
+Set-Clipboard " "
+Start-sleep -Milliseconds 20
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,674,130}][Win + Shift + Alt + Q][][{MouseMoveBy,144,23}][][][ENTER]"
+Start-sleep -Milliseconds 500
+$Checkpoint = Get-Clipboard
+if ($Checkpoint -ne "Fill") {
+    Write-Host "Not Fill!"
+    exit
+}
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][][Alt + f]"
+Start-sleep -Milliseconds 400
+$Pixel = 2
+Do {
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,608,223}]"
+    Start-sleep -Milliseconds 100
+    $PixelRGB = Get-ScreenColor
+    if ($PixelRGB -eq "rgb(7, 157, 5)") {
+        $Pixel = 1
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,608,223}][{MouseButton,L}]"
+        Start-sleep -Milliseconds 200
+    }
+    if ($PixelRGB -eq "rgb(255, 255, 255)") {
+        $Pixel = 0
+    }
+} Until (($Pixel -eq 1) -or ($Pixel -eq 0))
+Start-sleep -Milliseconds 200
+
+#FILTER
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,80,250}][{MouseButton,L}][][{MouseMoveToFocus,80,270}][{MouseButton,L}][][Ctrl + C]"
+Start-sleep -Milliseconds 800
+$RxCheck = (Get-Clipboard).Split("`t")[0]
+if ($RxCheck.StartsWith("2") -eq $false) {
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,80,250}][{MouseButton,L}][][{MouseMoveToFocus,80,270}][{MouseButton,L}][][Ctrl + C]"
+    Start-sleep -Milliseconds 800
+}
+
+#GET LIST
+$data = @()
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,550,270}][{MouseButton,L}]"
+Start-sleep -Milliseconds 100
+Do {
+    Set-Clipboard " "
+    Start-sleep -Milliseconds 15
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][][Ctrl + C]"
+    Start-sleep -Milliseconds 185
+    $Rx = (Get-Clipboard).Split("`t")[0]
+    $Drug = (Get-Clipboard).Split("`t")[8]
+    $Fill = (Get-Clipboard).Split("`t")[9]
+    
+    if ($Rx.StartsWith("2")) {
+        $data += @([pscustomobject]@{Rx = $Rx; Drug = $Drug; Fill = $Fill; OnHand = '*' })
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Down]"
+        Start-sleep -Milliseconds 70
+    }
+} Until (($Rx.StartsWith("6") -eq $true) -or ($Rx.StartsWith("4") -eq $true))
+if ($data.Count -eq 0) {
+    pause
+}
+Start-sleep -Milliseconds 600
+
+# Calculate the number of required loops
+$uniqueDrugs = $data.Drug | Select-Object -Unique
+$requiredLoops = $uniqueDrugs.Count
+Write-Host "Number of required loops: $requiredLoops"
+
+#GET ONHAND
+$onHandCache = @{}
+$loopCount = 0
+1..$data.Count | % {
+    $Drug = $data[($_ - 1)].Drug
+    if (-not $onHandCache.ContainsKey($Drug)) {
+        Start-sleep -Milliseconds 150
+        $GetOnHand1 = "[{Focus,0,*EPS/*}][Alt + I][][DOWN][][RIGHT][ENTER][{Focus,500,Package*}][]" + $Drug + "[][ENTER][][Alt + S]"
+        $GetOnHand2 = "[{Focus,0,*EPS/*}][Alt + I][][DOWN][][RIGHT][ENTER][{Focus,100,Package*}][]" + $Drug + "[][ENTER][][Alt + S]"
+        if ($_ -eq 1) {
+            & $Clavier /sendkeys $GetOnHand1
+            Start-sleep -Milliseconds 2000
+        } else {
+            & $Clavier /sendkeys $GetOnHand2
+            Start-sleep -Milliseconds 1200
+        }
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,549,631}][Win + Shift + Alt + Q][][{MouseMoveBy,129,23}][][][ENTER]"
+        Start-sleep -Milliseconds 500
+        $OnHand = Get-Clipboard
+        $onHandCache[$Drug] = $OnHand
+        $loopCount++
+        
+        # Check if this is the last loop
+        if ($loopCount -ne $requiredLoops) {
+            [System.Windows.Forms.SendKeys]::SendWait("%{r}")
+        } else {
+            [System.Windows.Forms.SendKeys]::SendWait("%{b}")
+        }
+    }
+    $data[($_ - 1)].OnHand = $onHandCache[$Drug]
+}
+
+$FinalData = $data | Where-Object -FilterScript { ([int]$_.OnHand -ne 0) } | Where-Object -FilterScript { ([int]$_.OnHand -ge [int]$_.Fill) }
+if ($FinalData.Count -eq 0) {
+    exit
+}
+
+$FinalData | select -Property Drug, Fill, OnHand | sort-object Drug | clip
+$FinalData | select -Property Drug, Fill, OnHand | sort-object Drug | Out-Printer -Name $Printer
+$FinalData | select -Property Drug, Fill, OnHand | sort-object Drug

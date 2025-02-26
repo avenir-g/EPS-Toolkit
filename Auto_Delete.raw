@@ -1,0 +1,587 @@
+﻿<#
+{
+    "Category": 2,
+    "Name": "Auto Delete",
+    "Shortcut": "Shift + Delete",
+    "Info": "Auto-deletes call requests, denials, and TP exceptions older than 2 months from the Open Call Queue. [Start on Open Call Queue screen]"
+}
+#>
+
+$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+add-type -name win -member $dllvar -namespace native
+[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
+
+$ErrorActionPreference = "SilentlyContinue"
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Check for today's .info file
+$today = Get-Date -Format "yyyyMMdd"
+$infoFilePath = "$today.info"
+
+if (-Not (Test-Path $infoFilePath)) {
+    # Load variables from precheck.ps1
+    . .\precheck.ps1
+
+    # Check the exit code of the last command
+    if ($LASTEXITCODE -ne 0) {
+        . .\errorHandler.ps1 $global:precheckError
+        exit 1
+    }
+}
+
+# List of variables to check
+$variables = @{
+    "Main" = $Main
+    "Clavier" = $Clavier
+    "Cap2Txt" = $Cap2Txt
+    "SendKeys" = $SendKeys
+    "Printer" = $Printer
+}
+
+# Check if all necessary variables are defined
+foreach ($var in $variables.GetEnumerator()) {
+    if (-not $var.Value) {
+        $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
+        . ./errorHandler.ps1 $errorMessage
+        exit 1
+    }
+}
+
+$Prog = $Cap2Txt
+if (! (ps | ? { $_.path -eq $prog })) {
+    & $prog
+    Start-sleep -Milliseconds 2000
+}
+
+Function Get-ScreenColor {
+
+    [CmdletBinding(DefaultParameterSetName = "None")]
+
+    param(
+        [Parameter(
+            Mandatory = $true,
+            ParameterSetName = "Pos"
+        )]
+        [Int]
+        $X,
+        [Parameter(
+            Mandatory = $true,
+            ParameterSetName = "Pos"
+        )]
+        [Int]
+        $Y
+    )
+    
+    if ($PSCmdlet.ParameterSetName -eq "None") {
+        $pos = [System.Windows.Forms.Cursor]::Position
+    }
+    else {
+        $pos = New-Object psobject
+        $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
+        $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
+    }
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
+    $bmp = New-Object System.Drawing.Bitmap(1, 1)
+    $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+    $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
+    $pixel = $bmp.GetPixel(0, 0)
+    $red = $pixel.R
+    $green = $pixel.G
+    $blue = $pixel.B
+    $result = New-Object psobject
+    if ($PSCmdlet.ParameterSetName -eq "None") {
+        $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
+        $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
+    }
+    $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
+    $result | Add-Member -MemberType NoteProperty -Name "Red" -Value $red
+    $result | Add-Member -MemberType NoteProperty -Name "Green" -Value $green
+    $result | Add-Member -MemberType NoteProperty -Name "Blue" -Value $blue
+    $result | Add-Member -MemberType NoteProperty -Name "RGB" -value $RGB
+    return $RGB
+}
+
+#CHECKPOINT: QUEUE
+Set-Clipboard " "
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,418,175}][Win + Shift + Alt + Q][][{MouseMoveBy,154,23}][][][ENTER]"
+Start-sleep -Milliseconds 500
+$Checkpoint = Get-Clipboard
+
+if (-Not (($Checkpoint -eq "All Calls") -or ($Checkpoint -eq "Patient") -or ($Checkpoint -eq "Prescriber") -or ($Checkpoint -eq "Insurance") -or ($Checkpoint -eq "Pharmacy"))) {
+    . ./errorHandler.ps1 "Not on Open Call Queue!`n[Ctrl + O]"
+    exit
+}
+
+#PREP
+$RunSpace = [RunSpaceFactory]::CreateRunSpace()
+$RunSpace.ApartmentState = "STA"
+$RunSpace.ThreadOptions = "UseNewThread"
+$RunSpace.Open()
+$Instance = [PowerShell]::Create()
+$Instance.Runspace = $RunSpace
+[void]$Instance.AddScript({
+        Start-sleep -Milliseconds 100
+        & $Clavier /sendkeys "[{Focus,0,Enterprise Pharmacy System}]"
+        Start-sleep -Milliseconds 100
+
+        $Instance.EndInvoke()            
+        $Instance.Dispose()
+        $RunSpace.Close()            
+    }).BeginInvoke()
+
+#FORM
+Add-type -AssemblyName microsoft.VisualBasic
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$form10 = New-Object System.Windows.Forms.Form
+$form10.Text = 'Enterprise Pharmacy System'
+$form10.Size = New-Object System.Drawing.Size(250, 150)
+$form10.StartPosition = 'CenterScreen'
+
+$OKButton = New-Object System.Windows.Forms.Button
+$OKButton.Location = New-Object System.Drawing.Point(70, 70)
+$OKButton.Size = New-Object System.Drawing.Size(70, 23)
+$OKButton.Text = 'OK'
+$OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+$OKButton.Enabled = $false
+$form10.AcceptButton = $OKButton
+$form10.Controls.Add($OKButton)
+
+$CancelButton = New-Object System.Windows.Forms.Button
+$CancelButton.Location = New-Object System.Drawing.Point(145, 70)
+$CancelButton.Size = New-Object System.Drawing.Size(70, 23)
+$CancelButton.Text = 'Cancel'
+$CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$form10.CancelButton = $CancelButton
+$form10.Controls.Add($CancelButton)
+
+$Label1 = New-Object System.Windows.Forms.Label
+$Label1.Location = New-Object System.Drawing.Point(35, 12)
+$Label1.Size = New-Object System.Drawing.Size(35, 20)
+$Label1.Text = 'User:'
+$form10.Controls.Add($Label1)
+
+$Label2 = New-Object System.Windows.Forms.Label
+$Label2.Location = New-Object System.Drawing.Point(10, 42)
+$Label2.Size = New-Object System.Drawing.Size(60, 20)
+$Label2.Text = 'Password:'
+$form10.Controls.Add($Label2)
+
+$Label4 = New-Object System.Windows.Forms.Label
+$Label4.Location = New-Object System.Drawing.Point(20, 60)
+$Label4.Size = New-Object System.Drawing.Size(40, 40)
+$Label4.Text = '!!'
+$Label4.Font = New-Object System.Drawing.Font("Berlin Sans FB Demi", 30, [System.Drawing.FontStyle]::Bold)
+$Label4.ForeColor = [System.Drawing.Color]::Red
+$form10.Controls.Add($Label4)
+
+$User = New-Object System.Windows.Forms.TextBox
+$User.Location = New-Object System.Drawing.Point(70, 10)
+$User.Size = New-Object System.Drawing.Size(145, 20) 
+$User.Multiline = $false
+$form10.Controls.Add($User)
+
+$Pass = New-Object System.Windows.Forms.MaskedTextBox
+$Pass.PasswordChar = '●'
+$Pass.Location = New-Object System.Drawing.Point(70, 40)
+$Pass.Size = New-Object System.Drawing.Size(145, 20) 
+$Pass.Multiline = $false
+$form10.Controls.Add($Pass)
+
+function validateBoxesAndCombos() {
+    if ($User.Text -and $Pass.Text) {
+        $OKButton.Enabled = $true
+    }
+    else {
+        $OKButton.Enabled = $false
+    }
+}
+
+$User.Add_TextChanged({ validateBoxesAndCombos })
+$Pass.Add_TextChanged({ validateBoxesAndCombos })
+
+$form10.Topmost = $true
+$User.Select()
+
+$result10 = $form10.ShowDialog()
+
+$Auth = "[{Focus,0,Enterprise Pharmacy System}][{MouseMoveToFocus,100,93}][][{MouseButton,L}][{MouseMoveToFocus,50,146}][][{MouseButton,L}][]" + $User.Text + "[TAB][]" + $Pass.Text + "[ENTER]"
+
+if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
+    $CounterDone = 0
+    #Calculate -2 month from Today
+    $2Months = (Get-Date).AddMonths(-2)
+    $Today = (Get-Date).AddMonths(-2).ToString('MM/dd/yyyy')
+
+    #Sort Queue by oldest date
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,800,230}][{MouseButton,L}][][{MouseMoveToFocus,800,250}][{MouseButton,L}][][Ctrl + C]"
+    Start-sleep -Milliseconds 400
+    $CallDate = [datetime]::parseexact((Get-Clipboard).Split("`t")[9].Substring(0, 10), 'yyyy-MM-dd', $null)
+
+    if ($CallDate -gt $2Months) {
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,800,230}][{MouseButton,L}][][{MouseMoveToFocus,800,250}][{MouseButton,L}][][Ctrl + C]"
+        Start-sleep -Milliseconds 400
+        $CallDate2 = [datetime]::parseexact((Get-Clipboard).Split("`t")[9].Substring(0, 10), 'yyyy-MM-dd', $null)
+        if ($CallDate -and $CallDate2 -gt $2Months) {
+            . ./successHandler.ps1 "Done! Deleted $CounterDone call(s)!`nNo more calls found over 2 months!"
+            exit
+        }
+        Start-sleep -Milliseconds 400
+    }
+
+    $Skip = 0
+
+    #Main Loop
+    Do {
+    #Target
+    $Result = 0
+    $PreviousCall = ""
+    $CurrentCallTask = ""
+    $CurrentCallDate = ""
+    
+    #FOCUS AND SKIP
+    if ($Skip -gt 0) {
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,500,190}][{MouseButton,L}][][{MouseButton,L}][][][TAB][][][TAB]"
+        Start-sleep -Milliseconds 500
+        1..$Skip | % {
+            [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+            Start-sleep -Milliseconds 20
+        }
+    }
+
+    Do {
+        Write-Host "===== LOOP ====="
+        
+        Set-Clipboard -Value " "
+        [System.Windows.Forms.SendKeys]::SendWait("^c")
+        Start-sleep -Milliseconds 100
+        $CurrentCall = (Get-Clipboard).Split("`t")[0, 2]
+        $CurrentCallTask = (Get-Clipboard).Split("`t")[5]
+        $CurrentCallDate = [datetime]::parseexact((Get-Clipboard).Split("`t")[9].Substring(0, 10), 'yyyy-MM-dd', $null)
+
+        if (($CurrentCall -eq $PreviousCall) -or ($CurrentCallDate -gt $2Months)) {
+            . ./successHandler.ps1 "Done! Deleted $CounterDone call(s)!`nNo more calls found over 2 months!"
+            exit
+        }
+
+        $PreviousCall = $CurrentCall
+
+        #SELECT TARGET OR SKIP
+        Write-Host $CurrentCall.Split("`t")[0, 2] "|" $CurrentCallTask "|" $CurrentCallDate
+        if (($CurrentCallTask -eq "Refill Request") -or ($CurrentCallTask -eq "Refill Denial") -or ($CurrentCallTask -eq "Data Entry12345") -or ($CurrentCallTask -eq "Escript Data Entry") -or ($CurrentCallTask -eq "Rx Change Request") -or ($CurrentCallTask -eq "TP Exception")) {
+            [System.Windows.Forms.SendKeys]::SendWait("%{s}")
+            Write-Host "SELECT" $CurrentCall
+            Start-sleep -Milliseconds 600
+            & $SendKeys Cancel " "
+            if ($? -eq $true) {
+                Start-sleep -Milliseconds 100
+                & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,500,190}][{MouseButton,L}][][{MouseButton,L}][][][TAB][][][TAB][][Down]"
+                Start-sleep -Milliseconds 700
+                $Skip++
+                $Result = 0
+                continue
+            }
+            if ($? -eq $false) {
+                Start-sleep -Milliseconds 400
+                & $SendKeys Error " "
+                if ($? -eq $true) {
+                    Start-sleep -Milliseconds 100
+                    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,500,190}][{MouseButton,L}][][{MouseButton,L}][][][TAB][][][TAB][][Down]"
+                    Start-sleep -Milliseconds 700
+                    $Skip++
+                    $Result = 0
+                }
+                if ($? -eq $false) {
+                    $Result = 1
+                    break
+                }
+            }
+        } else {
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][][Down]"
+        $Skip++
+        Start-sleep -Milliseconds 250
+        }
+
+    } Until ($Result -eq 1)
+
+    #ACTION!
+    if ($CurrentCallTask -eq "Refill Request" -or "Refill Denial" -or "Rx Change Request") {
+            Write-Host "ACTION: Refill Request | Refill Denial | Rx Change Request"
+        #CHECKPOINT: Call Notes
+        $endTime2 = (Get-Date).Add((New-TimeSpan -Seconds 0.7))
+        $Notes = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Call"))) {
+                & $Clavier /sendkeys "[{Focus,0,Call*}][ENTER]"
+                Start-sleep -Milliseconds 200
+                $Notes = 1
+            }
+        } Until ($Notes -eq 1 -or ((Get-Date) -gt $endTime2))
+        Start-sleep -Milliseconds 200
+        [System.Windows.Forms.SendKeys]::SendWait("%{l}")
+        Start-sleep -Milliseconds 200
+        [System.Windows.Forms.SendKeys]::SendWait("%{y}")
+        [System.Windows.Forms.SendKeys]::SendWait("%{c}")
+        Start-sleep -Milliseconds 300
+        & $Clavier /sendkeys $Auth
+        start-sleep -Milliseconds 500
+        $CounterDone ++
+    }
+
+    if ($CurrentCallTask -eq "Data Entry12345") {
+        Write-Host "ACTION: Data Entry"
+        #CHECKPOINT: Call Notes
+        $endTime2 = (Get-Date).Add((New-TimeSpan -Seconds 0.7))
+        $Notes = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Call"))) {
+                & $Clavier /sendkeys "[{Focus,0,Call*}][ENTER]"
+                Start-sleep -Milliseconds 200
+                $Notes = 1
+            }
+        } Until ($Notes -eq 1 -or ((Get-Date) -gt $endTime2))
+        Start-sleep -Milliseconds 200
+
+        [System.Windows.Forms.SendKeys]::SendWait("%{k}")
+        Start-sleep -Milliseconds 100
+
+        #CHECKPOINT: Notes
+        $endTime3 = (Get-Date).Add((New-TimeSpan -Seconds 1))
+        $Notes = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Notes"))) {
+                & $Clavier /sendkeys "[{Focus,0,*Notes*}][ENTER]"
+                Start-sleep -Milliseconds 200
+                $Notes = 1
+            }
+        } Until ($Notes -eq 1 -or ((Get-Date) -gt $endTime3))
+        Start-sleep -Milliseconds 200
+
+        [System.Windows.Forms.SendKeys]::SendWait("%{j}")
+        Start-sleep -Milliseconds 100
+        $endTime4 = (Get-Date).Add((New-TimeSpan -Seconds 1))
+        $Reject = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Data Entry"))) {
+                $Reject = 1
+                break
+            }
+        } Until ($Reject -eq 1 -or ((Get-Date) -gt $endTime4))
+        Start-sleep -Milliseconds 200
+        Start-sleep -Milliseconds 600
+        $Reject1 = "[{Focus,0,*Reject*}][{MouseMoveToFocus,35,195}][{MouseButton,L}][][{MouseMoveToFocus,35,343}][{MouseButton,L}][][Alt + D][][][]Auto Deactivated (" + $Today + "). Last Processed: " + $CurrentCallDate.ToString('MM/dd/yyyy')
+        & $Clavier /sendkeys $Reject1
+        Start-sleep -Milliseconds 1000
+        [System.Windows.Forms.SendKeys]::SendWait("%{o}")
+        Start-sleep -Milliseconds 300
+        pause
+        & $Clavier /sendkeys $Auth
+        start-sleep -Milliseconds 2000
+        $CounterDone ++
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][][Alt + b]"
+        Start-sleep -Milliseconds 250
+    }
+
+    if ($CurrentCallTask -eq "Escript Data Entry") {
+        Write-Host "ACTION: Escript Data Entry"
+        #CHECKPOINT: Call Notes
+        $endTime2 = (Get-Date).Add((New-TimeSpan -Seconds 0.7))
+        $Notes = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Call"))) {
+                & $Clavier /sendkeys "[{Focus,0,Call*}][ENTER]"
+                Start-sleep -Milliseconds 200
+                $Notes = 1
+            }
+        } Until ($Notes -eq 1 -or ((Get-Date) -gt $endTime2))
+        Start-sleep -Milliseconds 200
+
+        [System.Windows.Forms.SendKeys]::SendWait("%{k}")
+        Start-sleep -Milliseconds 100
+
+        #CHECKPOINT: Notes
+        $endTime3 = (Get-Date).Add((New-TimeSpan -Seconds 5))
+        $Notes = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Notes"))) {
+                & $Clavier /sendkeys "[{Focus,0,*Notes*}][ENTER]"
+                Start-sleep -Milliseconds 200
+                $Notes = 1
+            }
+        } Until ($Notes -eq 1 -or ((Get-Date) -gt $endTime3))
+        Start-sleep -Milliseconds 200
+
+        [System.Windows.Forms.SendKeys]::SendWait("%{j}")
+        Start-sleep -Milliseconds 100
+        $endTime4 = (Get-Date).Add((New-TimeSpan -Seconds 1))
+        $Reject = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Options"))) {
+                $Reject = 1
+                break
+            }
+        } Until ($Reject -eq 1 -or ((Get-Date) -gt $endTime4))
+        Start-sleep -Milliseconds 200
+        Start-sleep -Milliseconds 600
+        $Reject2 = "[{Focus,0,*Reject*}][{MouseMoveToFocus,36,166}][{MouseButton,L}][][TAB][][][]Auto Deactivated (" + $Today + "). Last Processed: " + $CurrentCallDate.ToString('MM/dd/yyyy')
+        & $Clavier /sendkeys $Reject2
+        Start-sleep -Milliseconds 1000
+        [System.Windows.Forms.SendKeys]::SendWait("%{o}")
+        Start-sleep -Milliseconds 300
+        & $Clavier /sendkeys $Auth
+        start-sleep -Milliseconds 2000
+        $CounterDone ++
+
+        #CHECKPOINT: BACK
+        $Back = 0
+        $endTime = (Get-Date).Add((New-TimeSpan -Seconds 5))
+
+        Do {
+            & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,60,210}]"
+            Start-sleep -Milliseconds 50
+            $PixelRGB2 = Get-ScreenColor
+            if ($PixelRGB2 -eq "rgb(206, 225, 242)") {
+                & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt + b]"
+                Start-sleep -Milliseconds 300
+                $Back = 1
+                break
+            }
+
+            if ($PixelRGB2 -eq "rgb(241, 243, 241)") {
+                $Back = 1
+                break
+            }
+
+        } Until (($Back -eq 1) -or ((Get-Date) -gt $endTime))
+        }
+
+    if ($CurrentCallTask -eq "TP Exception") {
+        Write-Host "ACTION: TP Exception"
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+k]"
+        Start-sleep -Milliseconds 200
+
+        #CHECKPOINT: Confirm Fill Date
+        $endTime = (Get-Date).Add((New-TimeSpan -Seconds 1))
+        $Confirm = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Confirm"))) {
+            & $Clavier /sendkeys "[{Focus,0,Confirm*}][Alt+y]"
+            Start-sleep -Milliseconds 200
+                $Confirm = 1
+            }
+        } Until ($Confirm -eq 1 -or ((Get-Date) -gt $endTime))
+
+        Start-sleep -Milliseconds 200
+        [System.Windows.Forms.SendKeys]::SendWait("%{j}")
+        Write-Host "REJECT"
+
+        #CHECKPOINT: Reject
+        $endTime = (Get-Date).Add((New-TimeSpan -Seconds 4))
+        $Reject = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Reject Options"))) {
+                Start-sleep -Milliseconds 600
+                & $Clavier /sendkeys "[{Focus,0,*Reject Options*}][{KeysDown,Alt}][][S][{KeysDown}][UP][{KeysDown,Alt}][D][][{KeysDown}][]Put on File[{KeysDown,Alt}][][o][{KeysDown}]"
+                Start-sleep -Milliseconds 800
+                $Reject = 1
+            }
+        } Until ($Reject -eq 1 -or ((Get-Date) -gt $endTime))
+        Start-sleep -Milliseconds 200
+
+        #CHECKPOINT: NO REJECT
+        if ($Reject -eq 0) {
+            Write-Host "REJECT NOT FOUND"
+            . ./errorHandler.ps1 "Error: Reject Window not found!`nScript Stopped! Deleted $CounterDone call(s)!"
+            exit
+        }
+
+        & $Clavier /sendkeys $Auth
+        start-sleep -Milliseconds 500
+        $CounterDone ++
+
+        #CHECKPOINT: Error
+        $endTime = (Get-Date).Add((New-TimeSpan -Seconds 2))
+        $Error = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Error"))) {
+            & $Clavier /sendkeys "[{Focus,0,Error*}][ENTER]"
+            Start-sleep -Milliseconds 200
+                $Error = 1
+            }
+        } Until ($Error -eq 1 -or ((Get-Date) -gt $endTime))
+
+        #CHECKPOINT: Cancel
+        $endTime = (Get-Date).Add((New-TimeSpan -Seconds 2))
+        $Error = 0
+        Do {
+            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Cancel"))) {
+            & $Clavier /sendkeys "[{Focus,0,Cancel*}][ENTER]"
+            Start-sleep -Milliseconds 200
+                $Error = 1
+            }
+        } Until ($Error -eq 1 -or ((Get-Date) -gt $endTime))
+
+            Start-sleep -Milliseconds 1000
+            & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,200,96}]"
+            Start-sleep -Milliseconds 50
+            $PixelRGB2 = Get-ScreenColor
+            if ($PixelRGB2 -ne "rgb(109, 157, 199)") {
+                & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+b]"
+                Start-sleep -Milliseconds 200
+                #CHECKPOINT: Error
+                $endTime = (Get-Date).Add((New-TimeSpan -Seconds 2))
+                $Error = 0
+                Do {
+                    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Error"))) {
+                    & $Clavier /sendkeys "[{Focus,0,Error*}][ENTER]"
+                    Start-sleep -Milliseconds 200
+                        $Error = 1
+                    }
+                } Until ($Error -eq 1 -or ((Get-Date) -gt $endTime))
+            }
+    }
+
+    #TERMINATE IF NO ACTION
+    if (-Not(($CurrentCallTask -eq "Refill Request" -or "Refill Denial" -or "Rx Change Request") -or ($CurrentCallTask -eq "Data Entry") -or ($CurrentCallTask -eq "TP Exception"))) {
+        exit
+    }
+
+    #CHECKPOINT: RESET
+    Write-Host "CHECKPOINT: RESET"
+    $ResetSuccess = 0
+    $endTime4 = (Get-Date).Add((New-TimeSpan -Seconds 10))
+
+    Do {
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,200,100}]"
+        Start-sleep -Milliseconds 50
+        $PixelRGB2 = Get-ScreenColor
+        if ($PixelRGB2 -eq "rgb(109, 157, 199)") {
+            Start-sleep -Milliseconds 200
+            & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,500,190}][{MouseButton,L}][][{MouseButton,L}][][][TAB][][][TAB]"
+            Start-sleep -Milliseconds 700
+            $ResetSuccess = 1
+        }
+
+        if ($PixelRGB2 -ne "rgb(109, 157, 199)") {
+        }
+    } Until (($ResetSuccess -eq 1) -or ((Get-Date) -gt $endTime4))
+
+    if ($ResetSuccess -eq 0) {
+        Write-Host "EXIT"
+        . ./errorHandler.ps1 "Error: Reset Timeout!`nScript Stopped! Deleted $CounterDone call(s)!"
+        exit
+    }
+
+    } Until ($CurrentCallDate -gt $2Months)
+    # Display success message
+    . ./successHandler.ps1 "All Done!"
+}
+else { 
+    Write-Host 'Canceled'
+}
