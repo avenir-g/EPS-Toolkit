@@ -1,4 +1,8 @@
-﻿# Add necessary assemblies
+﻿# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Add necessary assemblies
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.Windows.Forms
 
