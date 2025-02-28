@@ -46,6 +46,11 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-type -AssemblyName microsoft.VisualBasic
 
+# Load custom font
+$fontCollection = New-Object System.Drawing.Text.PrivateFontCollection
+$fontCollection.AddFontFile("$scriptDir\Assets\Berlin.ttf")
+$customFont = $fontCollection.Families[0]
+
 Function Get-ScreenColor {
 
     [CmdletBinding(DefaultParameterSetName = 'None')]
@@ -126,11 +131,12 @@ $Label2.Size = New-Object System.Drawing.Size(60, 20)
 $Label2.Text = 'Password:'
 $form6.Controls.Add($Label2)
 
+Add-Type -AssemblyName System.Drawing.Text
 $Label4 = New-Object System.Windows.Forms.Label
 $Label4.Location = New-Object System.Drawing.Point(15, 60)
 $Label4.Size = New-Object System.Drawing.Size(40, 40)
 $Label4.Text = 'Q'
-$Label4.Font = New-Object System.Drawing.Font("Berlin Sans FB Demi", 30, [System.Drawing.FontStyle]::Bold)
+$Label4.Font = New-Object System.Drawing.Font($customFont, 30, [System.Drawing.FontStyle]::Bold)
 $Label4.ForeColor = [System.Drawing.Color]::Purple
 $form6.Controls.Add($Label4)
 
