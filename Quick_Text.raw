@@ -128,11 +128,6 @@ function Get-TimeStamp {
 
 if ($result -eq [System.Windows.Forms.DialogResult]::OK)
 {
-    $Terminal = hostname
-    $Script = Split-Path -leaf $PSCommandpath
-    $Fx = "[" + $listBox.SelectedItems + "]"
-    $FxCAP = $Fx.ToUpper()
-    Write-Output "$(Get-TimeStamp) $Terminal $Script $FxCAP" | Out-file \\P051873\users$\s1873c01\Desktop\Shortcuts\Shortcut.log -append
 
     if ($listBox.SelectedItems -eq 'Fax'){
 
