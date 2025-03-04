@@ -42,10 +42,6 @@ foreach ($var in $variables.GetEnumerator()) {
     }
 }
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-Add-type -AssemblyName microsoft.VisualBasic
-
 Function Get-ScreenColor {
 
         [CmdletBinding(DefaultParameterSetName='None')]
@@ -72,7 +68,7 @@ Function Get-ScreenColor {
             $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
             $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
         }
-        $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
+        $map = [System.Drawing.Rectangle]::FromLTRB($pos.X,$pos.Y,$pos.X + 1,$pos.Y + 1)
         $bmp = New-Object System.Drawing.Bitmap(1,1)
         $graphics = [System.Drawing.Graphics]::FromImage($bmp)
         $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
@@ -89,12 +85,22 @@ Function Get-ScreenColor {
         return $RGB
     }
 
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-type -AssemblyName microsoft.VisualBasic
+Add-Type -AssemblyName System.Drawing.Text
+
+# Load custom font
+$fontCollection = New-Object System.Drawing.Text.PrivateFontCollection
+$fontCollection.AddFontFile("$scriptDir\Assets\Berlin.ttf")
+$customFont = $fontCollection.Families[0]
+
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$form4 = New-Object System.Windows.Forms.Form
-$form4.Text = 'Enterprise Pharmacy System'
-$form4.Size = New-Object System.Drawing.Size(250,180)
-$form4.StartPosition = 'CenterScreen'
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Enterprise Pharmacy System'
+$form.Size = New-Object System.Drawing.Size(250,180)
+$form.StartPosition = 'CenterScreen'
 
 $OKButton = New-Object System.Windows.Forms.Button
 $OKButton.Location = New-Object System.Drawing.Point(70,100)
@@ -102,61 +108,61 @@ $OKButton.Size = New-Object System.Drawing.Size(70,23)
 $OKButton.Text = 'OK'
 $OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
 $OKButton.Enabled = $false
-$form4.AcceptButton = $OKButton
-$form4.Controls.Add($OKButton)
+$form.AcceptButton = $OKButton
+$form.Controls.Add($OKButton)
 
 $CancelButton = New-Object System.Windows.Forms.Button
 $CancelButton.Location = New-Object System.Drawing.Point(145,100)
 $CancelButton.Size = New-Object System.Drawing.Size(70,23)
 $CancelButton.Text = 'Cancel'
 $CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-$form4.CancelButton = $CancelButton
-$form4.Controls.Add($CancelButton)
+$form.CancelButton = $CancelButton
+$form.Controls.Add($CancelButton)
 
 $Label1 = New-Object System.Windows.Forms.Label
 $Label1.Location = New-Object System.Drawing.Point(35,12)
 $Label1.Size = New-Object System.Drawing.Size(35,20)
 $Label1.Text = 'User:'
-$form4.Controls.Add($Label1)
+$form.Controls.Add($Label1)
 
 $Label2 = New-Object System.Windows.Forms.Label
 $Label2.Location = New-Object System.Drawing.Point(10,42)
 $Label2.Size = New-Object System.Drawing.Size(60,20)
 $Label2.Text = 'Password:'
-$form4.Controls.Add($Label2)
+$form.Controls.Add($Label2)
 
 $Label3 = New-Object System.Windows.Forms.Label
 $Label3.Location = New-Object System.Drawing.Point(20,72)
 $Label3.Size = New-Object System.Drawing.Size(50,20)
 $Label3.Text = 'Denials:'
-$form4.Controls.Add($Label3)
+$form.Controls.Add($Label3)
 
 $Label4 = New-Object System.Windows.Forms.Label
 $Label4.Location = New-Object System.Drawing.Point(15,90)
 $Label4.Size = New-Object System.Drawing.Size(40,40)
 $Label4.Text = 'D'
-$Label4.Font = New-Object System.Drawing.Font("Berlin Sans FB Demi",30,[System.Drawing.FontStyle]::Bold)
+$Label4.Font = New-Object System.Drawing.Font($customFont,30,[System.Drawing.FontStyle]::Bold)
 $Label4.ForeColor = [System.Drawing.Color]::Red
-$form4.Controls.Add($Label4)
+$form.Controls.Add($Label4)
 
 $User = New-Object System.Windows.Forms.TextBox
 $User.Location = New-Object System.Drawing.Point(70,10)
 $User.Size = New-Object System.Drawing.Size(145,20) 
 $User.Multiline = $false
-$form4.Controls.Add($User)
+$form.Controls.Add($User)
 
 $Pass = New-Object System.Windows.Forms.MaskedTextBox
 $Pass.PasswordChar = '●'
 $Pass.Location = New-Object System.Drawing.Point(70,40)
 $Pass.Size = New-Object System.Drawing.Size(145,20) 
 $Pass.Multiline = $false
-$form4.Controls.Add($Pass)
+$form.Controls.Add($Pass)
 
 $Denials = New-Object System.Windows.Forms.TextBox
 $Denials.Location = New-Object System.Drawing.Point(70,70)
 $Denials.Size = New-Object System.Drawing.Size(145,20) 
 $Denials.Multiline = $false
-$form4.Controls.Add($Denials)
+$form.Controls.Add($Denials)
 
 function validateBoxesAndCombos(){
     if ($User.Text -and $Pass.Text -and $Denials.Text){
@@ -179,10 +185,10 @@ $Denials.Add_TextChanged({
         }
 })
 
-$form4.Topmost = $true
+$form.Topmost = $true
 $User.Select()
 
-$result4 = $form4.ShowDialog()
+$result4 = $form.ShowDialog()
 
 $Auth = "[{Focus,0,Enterprise Pharmacy System}][{MouseMoveToFocus,100,93}][][{MouseButton,L}][{MouseMoveToFocus,50,146}][][{MouseButton,L}][]" + $User.Text + "[TAB][]" + $Pass.Text + "[ENTER]"
 
@@ -277,11 +283,11 @@ if ($result -eq 1) {
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,185,358}]"
     Start-sleep -Milliseconds 100
     $PixelRGB = Get-ScreenColor
-    if ($PixelRGB -eq "rgb(7, 165, 5)") {
+    if ($PixelRGB -eq "rgb(7,165,5)") {
     $PixelSuccess = 1
     Write-Host "Success"
     }
-    if ($PixelRGB -eq "rgb(213, 213, 213)") {
+    if ($PixelRGB -eq "rgb(213,213,213)") {
     $PixelSkip = 1
     Write-Host "Skip"
     }
@@ -349,7 +355,7 @@ if ($result -eq 1) {
         }
     }
 
-    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,180, 570}][{MouseButton,L}][]"
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,180,570}][{MouseButton,L}][]"
     Start-sleep -Milliseconds 200
     [System.Windows.Forms.SendKeys]::SendWait("%{s}")
     Start-sleep -Milliseconds 1500
@@ -374,10 +380,10 @@ if ($result -eq 1) {
 
     $PixelRefillSuccess = 0
     Do {
-    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,231, 741}]"
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,231,741}]"
     Start-sleep -Milliseconds 100
     $PixelRGB = Get-ScreenColor
-    if ($PixelRGB -eq "rgb(0, 0, 0)") {
+    if ($PixelRGB -eq "rgb(0,0,0)") {
     $PixelRefillSuccess = 1
     Write-Host "Success"
     }
@@ -427,11 +433,11 @@ if ($result -eq 1) {
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,185,360}]"
     Start-sleep -Milliseconds 100
     $PixelRGB = Get-ScreenColor
-    if ($PixelRGB -eq "rgb(7, 165, 5)") {
+    if ($PixelRGB -eq "rgb(7,165,5)") {
     $PixelSuccess = 1
     Write-Host "Success"
     }
-    if ($PixelRGB -eq "rgb(213, 213, 213)") {
+    if ($PixelRGB -eq "rgb(213,213,213)") {
     $PixelSkip = 1
     Write-Host "Skip"
     }
@@ -499,7 +505,7 @@ if ($result -eq 1) {
             }
         }
 
-        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,180, 570}][{MouseButton,L}][]"
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,180,570}][{MouseButton,L}][]"
         Start-sleep -Milliseconds 200
         [System.Windows.Forms.SendKeys]::SendWait("%{s}")
         Start-sleep -Milliseconds 2000
@@ -524,10 +530,10 @@ if ($result -eq 1) {
 
         $PixelRefillSuccess = 0
         Do {
-        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,231, 741}]"
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,231,741}]"
         Start-sleep -Milliseconds 100
         $PixelRGB = Get-ScreenColor
-        if ($PixelRGB -eq "rgb(0, 0, 0)") {
+        if ($PixelRGB -eq "rgb(0,0,0)") {
         $PixelRefillSuccess = 1
         Write-Host "Success"
         }

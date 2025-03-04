@@ -42,15 +42,6 @@ foreach ($var in $variables.GetEnumerator()) {
     }
 }
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-Add-type -AssemblyName microsoft.VisualBasic
-
-# Load custom font
-$fontCollection = New-Object System.Drawing.Text.PrivateFontCollection
-$fontCollection.AddFontFile("$scriptDir\Assets\Berlin.ttf")
-$customFont = $fontCollection.Families[0]
-
 Function Get-ScreenColor {
 
     [CmdletBinding(DefaultParameterSetName = 'None')]
@@ -78,11 +69,11 @@ Function Get-ScreenColor {
         $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
         $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
     }
-    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
-    $bmp = New-Object System.Drawing.Bitmap(1, 1)
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X,$pos.Y,$pos.X + 1,$pos.Y + 1)
+    $bmp = New-Object System.Drawing.Bitmap(1,1)
     $graphics = [System.Drawing.Graphics]::FromImage($bmp)
     $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
-    $pixel = $bmp.GetPixel(0, 0)
+    $pixel = $bmp.GetPixel(0,0)
     $red = $pixel.R
     $green = $pixel.G
     $blue = $pixel.B
@@ -95,63 +86,72 @@ Function Get-ScreenColor {
     return $RGB
 }
 
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-type -AssemblyName microsoft.VisualBasic
+Add-Type -AssemblyName System.Drawing.Text
+
+# Load custom font
+$fontCollection = New-Object System.Drawing.Text.PrivateFontCollection
+$fontCollection.AddFontFile("$scriptDir\Assets\Berlin.ttf")
+$customFont = $fontCollection.Families[0]
+
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$form6 = New-Object System.Windows.Forms.Form
-$form6.Text = 'Enterprise Pharmacy System'
-$form6.Size = New-Object System.Drawing.Size(250, 150)
-$form6.StartPosition = 'CenterScreen'
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Enterprise Pharmacy System'
+$form.Size = New-Object System.Drawing.Size(250,150)
+$form.StartPosition = 'CenterScreen'
 
 $OKButton = New-Object System.Windows.Forms.Button
-$OKButton.Location = New-Object System.Drawing.Point(70, 70)
-$OKButton.Size = New-Object System.Drawing.Size(70, 23)
+$OKButton.Location = New-Object System.Drawing.Point(70,70)
+$OKButton.Size = New-Object System.Drawing.Size(70,23)
 $OKButton.Text = 'OK'
 $OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
 $OKButton.Enabled = $false
-$form6.AcceptButton = $OKButton
-$form6.Controls.Add($OKButton)
+$form.AcceptButton = $OKButton
+$form.Controls.Add($OKButton)
 
 $CancelButton = New-Object System.Windows.Forms.Button
-$CancelButton.Location = New-Object System.Drawing.Point(145, 70)
-$CancelButton.Size = New-Object System.Drawing.Size(70, 23)
+$CancelButton.Location = New-Object System.Drawing.Point(145,70)
+$CancelButton.Size = New-Object System.Drawing.Size(70,23)
 $CancelButton.Text = 'Cancel'
 $CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-$form6.CancelButton = $CancelButton
-$form6.Controls.Add($CancelButton)
+$form.CancelButton = $CancelButton
+$form.Controls.Add($CancelButton)
 
 $Label1 = New-Object System.Windows.Forms.Label
-$Label1.Location = New-Object System.Drawing.Point(35, 12)
-$Label1.Size = New-Object System.Drawing.Size(35, 20)
+$Label1.Location = New-Object System.Drawing.Point(35,12)
+$Label1.Size = New-Object System.Drawing.Size(35,20)
 $Label1.Text = 'User:'
-$form6.Controls.Add($Label1)
+$form.Controls.Add($Label1)
 
 $Label2 = New-Object System.Windows.Forms.Label
-$Label2.Location = New-Object System.Drawing.Point(10, 42)
-$Label2.Size = New-Object System.Drawing.Size(60, 20)
+$Label2.Location = New-Object System.Drawing.Point(10,42)
+$Label2.Size = New-Object System.Drawing.Size(60,20)
 $Label2.Text = 'Password:'
-$form6.Controls.Add($Label2)
+$form.Controls.Add($Label2)
 
-Add-Type -AssemblyName System.Drawing.Text
 $Label4 = New-Object System.Windows.Forms.Label
-$Label4.Location = New-Object System.Drawing.Point(15, 60)
-$Label4.Size = New-Object System.Drawing.Size(40, 40)
+$Label4.Location = New-Object System.Drawing.Point(15,60)
+$Label4.Size = New-Object System.Drawing.Size(40,40)
 $Label4.Text = 'Q'
-$Label4.Font = New-Object System.Drawing.Font($customFont, 30, [System.Drawing.FontStyle]::Bold)
+$Label4.Font = New-Object System.Drawing.Font($customFont,30,[System.Drawing.FontStyle]::Bold)
 $Label4.ForeColor = [System.Drawing.Color]::Purple
-$form6.Controls.Add($Label4)
+$form.Controls.Add($Label4)
 
 $User = New-Object System.Windows.Forms.TextBox
-$User.Location = New-Object System.Drawing.Point(70, 10)
-$User.Size = New-Object System.Drawing.Size(145, 20) 
+$User.Location = New-Object System.Drawing.Point(70,10)
+$User.Size = New-Object System.Drawing.Size(145,20) 
 $User.Multiline = $false
-$form6.Controls.Add($User)
+$form.Controls.Add($User)
 
 $Pass = New-Object System.Windows.Forms.MaskedTextBox
 $Pass.PasswordChar = '●'
-$Pass.Location = New-Object System.Drawing.Point(70, 40)
-$Pass.Size = New-Object System.Drawing.Size(145, 20) 
+$Pass.Location = New-Object System.Drawing.Point(70,40)
+$Pass.Size = New-Object System.Drawing.Size(145,20) 
 $Pass.Multiline = $false
-$form6.Controls.Add($Pass)
+$form.Controls.Add($Pass)
 
 function validateBoxesAndCombos() {
     if ($User.Text -and $Pass.Text) {
@@ -165,10 +165,10 @@ function validateBoxesAndCombos() {
 $User.Add_TextChanged({ validateBoxesAndCombos })
 $Pass.Add_TextChanged({ validateBoxesAndCombos })
 
-$form6.Topmost = $true
+$form.Topmost = $true
 $User.Select()
 
-$result6 = $form6.ShowDialog()
+$result6 = $form.ShowDialog()
 
 $Auth = "[{Focus,0,Enterprise Pharmacy System}][{MouseMoveToFocus,100,93}][][{MouseButton,L}][{MouseMoveToFocus,50,146}][][{MouseButton,L}][]" + $User.Text + "[TAB][]" + $Pass.Text + "[ENTER]"
 
@@ -201,12 +201,12 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             Start-sleep -Milliseconds 50
             $PixelRGB = Get-ScreenColor
 
-            if ($PixelRGB -eq "rgb(206, 225, 242)") {
+            if ($PixelRGB -eq "rgb(206,225,242)") {
                 write-host "RECORDS FOUND:" $PixelRGB
                 $ListSuccess = 1
             }
 
-            if ($PixelRGB -eq "rgb(211, 211, 211)") {
+            if ($PixelRGB -eq "rgb(211,211,211)") {
                 $Done = 1
                 write-host "LIST EMPTY:" $PixelRGB
                 exit
@@ -250,19 +250,19 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             Start-sleep -Milliseconds 10
             $PixelRGB = Get-ScreenColor
 
-            if ($PixelRGB -eq "rgb(241, 243, 241)") {
+            if ($PixelRGB -eq "rgb(241,243,241)") {
                 Continue
             }
 
-            if ($PixelRGB -eq "rgb(0, 0, 0)") {
+            if ($PixelRGB -eq "rgb(0,0,0)") {
                 $MTMSkip = 1
             }
 
-            if ($PixelRGB -eq "rgb(168, 170, 168)") {
+            if ($PixelRGB -eq "rgb(168,170,168)") {
                 $MTMSkip = 1
             }
 
-            if ($PixelRGB -eq "rgb(0, 178, 0)") {
+            if ($PixelRGB -eq "rgb(0,178,0)") {
                 $MTMSuccess = 1
             }
 
@@ -299,7 +299,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             Start-sleep -Milliseconds 10
             $PixelRGB1 = Get-ScreenColor
             #Stop if green
-            if ($PixelRGB1 -eq "rgb(7, 165, 5)") {
+            if ($PixelRGB1 -eq "rgb(7,165,5)") {
                 $CheckStop = 1
                 break
             }
@@ -320,14 +320,14 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,29,385}]"
             Start-sleep -Milliseconds 10
             $PixelRGB = Get-ScreenColor
-            if ($PixelRGB -eq "rgb(7, 165, 5)") {
+            if ($PixelRGB -eq "rgb(7,165,5)") {
                 $CheckStop = 1
             }
-            if ($PixelRGB -eq "rgb(251, 251, 251)") {
+            if ($PixelRGB -eq "rgb(251,251,251)") {
                 COntinue
             }
 
-            if ($PixelRGB -eq "rgb(7, 165, 5)") {
+            if ($PixelRGB -eq "rgb(7,165,5)") {
                 $CheckStop = 1
             }
 
