@@ -24,7 +24,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# List of variables to check
+# List of variables to checky
 $variables = @{
     "Main" = $Main
     "Clavier" = $Clavier
@@ -46,13 +46,15 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 add-type -AssemblyName microsoft.VisualBasic
 
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Data Entry Form'
-$form.Size = New-Object System.Drawing.Size(300,230)
+$form.Size = New-Object System.Drawing.Size(300,280)
 $form.StartPosition = 'CenterScreen'
 
 $OKButton = New-Object System.Windows.Forms.Button
-$OKButton.Location = New-Object System.Drawing.Point(60,155)
+$OKButton.Location = New-Object System.Drawing.Point(60,205)
 $OKButton.Size = New-Object System.Drawing.Size(75,23)
 $OKButton.Text = 'OK'
 $OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
@@ -61,7 +63,7 @@ $form.AcceptButton = $OKButton
 $form.Controls.Add($OKButton)
 
 $CancelButton = New-Object System.Windows.Forms.Button
-$CancelButton.Location = New-Object System.Drawing.Point(150,155)
+$CancelButton.Location = New-Object System.Drawing.Point(150,205)
 $CancelButton.Size = New-Object System.Drawing.Size(75,23)
 $CancelButton.Text = 'Cancel'
 $CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
@@ -76,13 +78,13 @@ $label1.Text = 'Please make a selection from the list below:'
 $form.Controls.Add($label1)
 
 $label3 = New-Object System.Windows.Forms.Label
-$label3.Location = New-Object System.Drawing.Point(10,120)
+$label3.Location = New-Object System.Drawing.Point(10,170)
 $label3.Size = New-Object System.Drawing.Size(260,30)
 $form.Controls.Add($label3)
 
 $listBox = New-Object System.Windows.Forms.Listbox
 $listBox.Location = New-Object System.Drawing.Point(10,30)
-$listBox.Size = New-Object System.Drawing.Size(260,20)
+$listBox.Size = New-Object System.Drawing.Size(260,140)
 
 $listBox.SelectionMode = 'One'
 
@@ -94,8 +96,7 @@ $listBox.SelectionMode = 'One'
 [void] $listBox.Items.Add('PA Fax Reschedule')
 [void] $listBox.Items.Add('Wait')
 
-
-$listBox.Height = 90
+$listBox.Height = 140
 $listBox.TabIndex = 0;
 $listBox.add_SelectedIndexChanged({
   if ($listBox.SelectedItem -eq "Fax") {
