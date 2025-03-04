@@ -19,7 +19,7 @@ if (Test-Path $iniFilePath) {
             $Printer = $matches[1]
         }
     }
-    $SendKeys = $Main + "SendKeys.bat"
+    $SendKeys = $Main + "Assets/bin/SendKeys.bat"
 } else {
     Write-Host "settings.ini not found!"
     $global:precheckError = "settings.ini not found!"
