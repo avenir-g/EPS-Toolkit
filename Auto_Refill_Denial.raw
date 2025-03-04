@@ -68,7 +68,7 @@ Function Get-ScreenColor {
         $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
         $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
     }
-    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X,$pos.Y,$pos.X + 1,$pos.Y + 1)
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
     $bmp = New-Object System.Drawing.Bitmap(1,1)
     $graphics = [System.Drawing.Graphics]::FromImage($bmp)
     $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
@@ -283,11 +283,11 @@ if ($result -eq 1) {
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,185,358}]"
     Start-sleep -Milliseconds 100
     $PixelRGB = Get-ScreenColor
-    if ($PixelRGB -eq "rgb(7,165,5)") {
+    if ($PixelRGB -eq "rgb(7, 165, 5)") {
     $PixelSuccess = 1
     Write-Host "Success"
     }
-    if ($PixelRGB -eq "rgb(213,213,213)") {
+    if ($PixelRGB -eq "rgb(213, 213, 213)") {
     $PixelSkip = 1
     Write-Host "Skip"
     }
@@ -383,7 +383,7 @@ if ($result -eq 1) {
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,231,741}]"
     Start-sleep -Milliseconds 100
     $PixelRGB = Get-ScreenColor
-    if ($PixelRGB -eq "rgb(0,0,0)") {
+    if ($PixelRGB -eq "rgb(0, 0, 0)") {
     $PixelRefillSuccess = 1
     Write-Host "Success"
     }
@@ -433,11 +433,11 @@ if ($result -eq 1) {
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,185,360}]"
     Start-sleep -Milliseconds 100
     $PixelRGB = Get-ScreenColor
-    if ($PixelRGB -eq "rgb(7,165,5)") {
+    if ($PixelRGB -eq "rgb(7, 165, 5)") {
     $PixelSuccess = 1
     Write-Host "Success"
     }
-    if ($PixelRGB -eq "rgb(213,213,213)") {
+    if ($PixelRGB -eq "rgb(213, 213, 213)") {
     $PixelSkip = 1
     Write-Host "Skip"
     }
@@ -533,7 +533,7 @@ if ($result -eq 1) {
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,231,741}]"
         Start-sleep -Milliseconds 100
         $PixelRGB = Get-ScreenColor
-        if ($PixelRGB -eq "rgb(0,0,0)") {
+        if ($PixelRGB -eq "rgb(0, 0, 0)") {
         $PixelRefillSuccess = 1
         Write-Host "Success"
         }
