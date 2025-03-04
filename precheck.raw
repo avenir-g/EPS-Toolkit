@@ -11,7 +11,7 @@ if (Test-Path $iniFilePath) {
     foreach ($line in $iniContent) {
         if ($line -match "^Main=(.*)$") {
             $Main = $matches[1]
-        } elseif ($line -match "^Clavier\+=(.*)$") {
+        } elseif ($line -match "^Clavier=(.*)$") {
             $Clavier = $matches[1]
         } elseif ($line -match "^Cap2Txt=(.*)$") {
             $Cap2Txt = $matches[1]
