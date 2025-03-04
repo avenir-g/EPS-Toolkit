@@ -133,7 +133,7 @@ Add-Type -AssemblyName System.Drawing.Text
 
 # Load custom font
 $fontCollection = New-Object System.Drawing.Text.PrivateFontCollection
-$fontCollection.AddFontFile("$scriptDir\Assets\Berlin.ttf")
+$fontCollection.AddFontFile("$scriptDir\Assets\fonts\Berlin.ttf")
 $customFont = $fontCollection.Families[0]
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
