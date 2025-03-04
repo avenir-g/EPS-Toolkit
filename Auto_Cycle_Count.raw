@@ -1,4 +1,4 @@
-﻿$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
 add-type -name win -member $dllvar -namespace native
 [native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
 
@@ -78,7 +78,7 @@ Function Get-ScreenColor {
         $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
         $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
     }
-    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X,$pos.Y,$pos.X + 1,$pos.Y + 1)
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
     $bmp = New-Object System.Drawing.Bitmap(1,1)
     $graphics = [System.Drawing.Graphics]::FromImage($bmp)
     $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
@@ -199,7 +199,7 @@ Do {
     Start-sleep -Milliseconds 10
     $PixelRGB = Get-ScreenColor
 
-    if ($PixelRGB -ne "rgb(206,225,242)") {
+    if ($PixelRGB -ne "rgb(206, 225, 242)") {
         exit
     }
 
