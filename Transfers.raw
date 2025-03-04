@@ -42,52 +42,52 @@ foreach ($var in $variables.GetEnumerator()) {
     }
 }
 
-Add-Type -AssemblyName microsoft.VisualBasic
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-
 Function Get-ScreenColor {
 
-        [CmdletBinding(DefaultParameterSetName='None')]
+    [CmdletBinding(DefaultParameterSetName='None')]
 
-        param(
-            [Parameter(
-                Mandatory=$true,
-                ParameterSetName="Pos"
-            )]
-            [Int]
-            $X,
-            [Parameter(
-                Mandatory=$true,
-                ParameterSetName="Pos"
-            )]
-            [Int]
-            $Y
-        )
-    
-        if ($PSCmdlet.ParameterSetName -eq 'None') {
-            $pos = [System.Windows.Forms.Cursor]::Position
-        } else {
-            $pos = New-Object psobject
-            $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
-            $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
-        }
-        $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
-        $bmp = New-Object System.Drawing.Bitmap(1,1)
-        $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-        $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
-        $pixel = $bmp.GetPixel(0,0)
-        $red = $pixel.R
-        $green = $pixel.G
-        $blue = $pixel.B
-        $result = New-Object psobject
-        if ($PSCmdlet.ParameterSetName -eq 'None') {
-            $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
-            $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
-        }
-        $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
-        return $RGB
+    param(
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName="Pos"
+        )]
+        [Int]
+        $X,
+        [Parameter(
+            Mandatory=$true,
+            ParameterSetName="Pos"
+        )]
+        [Int]
+        $Y
+    )
+
+    if ($PSCmdlet.ParameterSetName -eq 'None') {
+        $pos = [System.Windows.Forms.Cursor]::Position
+    } else {
+        $pos = New-Object psobject
+        $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
+        $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
     }
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
+    $bmp = New-Object System.Drawing.Bitmap(1,1)
+    $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+    $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
+    $pixel = $bmp.GetPixel(0,0)
+    $red = $pixel.R
+    $green = $pixel.G
+    $blue = $pixel.B
+    $result = New-Object psobject
+    if ($PSCmdlet.ParameterSetName -eq 'None') {
+        $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
+        $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
+    }
+    $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
+    return $RGB
+}
+
+Add-Type -AssemblyName Microsoft.VisualBasic
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 
 [Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise")
 [System.Windows.Forms.SendKeys]::SendWait("%{e}")

@@ -38,10 +38,6 @@ foreach ($var in $variables.GetEnumerator()) {
     }
 }
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-add-type -AssemblyName microsoft.VisualBasic
-
 $Prog = $Cap2Txt
 if (! (ps | ? { $_.path -eq $Prog })) {
     & $Prog
@@ -80,6 +76,10 @@ Function Get-ScreenColor {
     $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
     return $RGB
 }
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+add-type -AssemblyName Microsoft.VisualBasic
 
 #CHECKPOINT
 Set-Clipboard " "

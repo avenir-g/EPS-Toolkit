@@ -38,9 +38,6 @@ foreach ($var in $variables.GetEnumerator()) {
     }
 }
 
-Add-type -AssemblyName Microsoft.VisualBasic
-Add-Type -AssemblyName System.Windows.Forms
-
 Function Get-ScreenColor {
 
     [CmdletBinding(DefaultParameterSetName = 'None')]
@@ -84,6 +81,9 @@ Function Get-ScreenColor {
     $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
     return $RGB
 }
+
+Add-type -AssemblyName Microsoft.VisualBasic
+Add-Type -AssemblyName System.Windows.Forms
 
 Function Get-TimeStamp {
     

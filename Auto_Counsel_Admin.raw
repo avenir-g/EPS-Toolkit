@@ -88,7 +88,7 @@ Function Get-ScreenColor {
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-type -AssemblyName microsoft.VisualBasic
+Add-type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Drawing.Text
 
 # Load custom font

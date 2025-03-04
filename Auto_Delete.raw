@@ -50,6 +50,34 @@ if (! (ps | ? { $_.path -eq $prog })) {
     Start-sleep -Milliseconds 2000
 }
 
+#CHECKPOINT: QUEUE
+Set-Clipboard " "
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,418,175}][Win + Shift + Alt + Q][][{MouseMoveBy,154,23}][][][ENTER]"
+Start-sleep -Milliseconds 500
+$Checkpoint = Get-Clipboard
+
+if (-Not (($Checkpoint -eq "All Calls") -or ($Checkpoint -eq "Patient") -or ($Checkpoint -eq "Prescriber") -or ($Checkpoint -eq "Insurance") -or ($Checkpoint -eq "Pharmacy"))) {
+    . ./errorHandler.ps1 "Not on Open Call Queue!`n[Ctrl + O]"
+    exit
+}
+
+#PREP
+$RunSpace = [RunSpaceFactory]::CreateRunSpace()
+$RunSpace.ApartmentState = "STA"
+$RunSpace.ThreadOptions = "UseNewThread"
+$RunSpace.Open()
+$Instance = [PowerShell]::Create()
+$Instance.Runspace = $RunSpace
+[void]$Instance.AddScript({
+        Start-sleep -Milliseconds 100
+        & $Clavier /sendkeys "[{Focus,0,Enterprise Pharmacy System}]"
+        Start-sleep -Milliseconds 100
+
+        $Instance.EndInvoke()            
+        $Instance.Dispose()
+        $RunSpace.Close()            
+    }).BeginInvoke()
+
 Function Get-ScreenColor {
 
     [CmdletBinding(DefaultParameterSetName = "None")]
@@ -98,36 +126,7 @@ Function Get-ScreenColor {
     return $RGB
 }
 
-#CHECKPOINT: QUEUE
-Set-Clipboard " "
-& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,418,175}][Win + Shift + Alt + Q][][{MouseMoveBy,154,23}][][][ENTER]"
-Start-sleep -Milliseconds 500
-$Checkpoint = Get-Clipboard
-
-if (-Not (($Checkpoint -eq "All Calls") -or ($Checkpoint -eq "Patient") -or ($Checkpoint -eq "Prescriber") -or ($Checkpoint -eq "Insurance") -or ($Checkpoint -eq "Pharmacy"))) {
-    . ./errorHandler.ps1 "Not on Open Call Queue!`n[Ctrl + O]"
-    exit
-}
-
-#PREP
-$RunSpace = [RunSpaceFactory]::CreateRunSpace()
-$RunSpace.ApartmentState = "STA"
-$RunSpace.ThreadOptions = "UseNewThread"
-$RunSpace.Open()
-$Instance = [PowerShell]::Create()
-$Instance.Runspace = $RunSpace
-[void]$Instance.AddScript({
-        Start-sleep -Milliseconds 100
-        & $Clavier /sendkeys "[{Focus,0,Enterprise Pharmacy System}]"
-        Start-sleep -Milliseconds 100
-
-        $Instance.EndInvoke()            
-        $Instance.Dispose()
-        $RunSpace.Close()            
-    }).BeginInvoke()
-
-#FORM
-Add-type -AssemblyName microsoft.VisualBasic
+Add-type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Drawing.Text

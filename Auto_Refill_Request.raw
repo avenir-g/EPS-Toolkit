@@ -97,7 +97,7 @@ Function Get-ScreenColor {
 }
 
 #FORM
-Add-type -AssemblyName microsoft.VisualBasic
+Add-type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Drawing.Text
