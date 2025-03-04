@@ -136,7 +136,7 @@ Do {
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Down]"
         Start-sleep -Milliseconds 70
     }
-} Until (($Rx.StartsWith("6") -eq $true) -or ($Rx.StartsWith("4") -eq $true))
+} Until (($Rx.StartsWith("2") -ne $true) -or ($Rx.StartsWith("4") -eq $true))
 if ($data.Count -eq 0) {
     pause
 }
