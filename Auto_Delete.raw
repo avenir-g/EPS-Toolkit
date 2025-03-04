@@ -1,4 +1,4 @@
-﻿<#
+<#
 {
     "Category": 2,
     "Name": "Auto Delete",
@@ -105,7 +105,7 @@ Function Get-ScreenColor {
         $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
         $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
     }
-    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X,$pos.Y,$pos.X + 1,$pos.Y + 1)
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
     $bmp = New-Object System.Drawing.Bitmap(1,1)
     $graphics = [System.Drawing.Graphics]::FromImage($bmp)
     $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
@@ -445,14 +445,14 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,60,210}]"
             Start-sleep -Milliseconds 50
             $PixelRGB2 = Get-ScreenColor
-            if ($PixelRGB2 -eq "rgb(206,225,242)") {
+            if ($PixelRGB2 -eq "rgb(206, 225, 242)") {
                 & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt + b]"
                 Start-sleep -Milliseconds 300
                 $Back = 1
                 break
             }
 
-            if ($PixelRGB2 -eq "rgb(241,243,241)") {
+            if ($PixelRGB2 -eq "rgb(241, 243, 241)") {
                 $Back = 1
                 break
             }
@@ -530,7 +530,7 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,200,96}]"
             Start-sleep -Milliseconds 50
             $PixelRGB2 = Get-ScreenColor
-            if ($PixelRGB2 -ne "rgb(109,157,199)") {
+            if ($PixelRGB2 -ne "rgb(109, 157, 199)") {
                 & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+b]"
                 Start-sleep -Milliseconds 200
                 #CHECKPOINT: Error
@@ -560,14 +560,14 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,200,100}]"
         Start-sleep -Milliseconds 50
         $PixelRGB2 = Get-ScreenColor
-        if ($PixelRGB2 -eq "rgb(109,157,199)") {
+        if ($PixelRGB2 -eq "rgb(109, 157, 199)") {
             Start-sleep -Milliseconds 200
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,500,190}][{MouseButton,L}][][{MouseButton,L}][][][TAB][][][TAB]"
             Start-sleep -Milliseconds 700
             $ResetSuccess = 1
         }
 
-        if ($PixelRGB2 -ne "rgb(109,157,199)") {
+        if ($PixelRGB2 -ne "rgb(109, 157, 199)") {
         }
     } Until (($ResetSuccess -eq 1) -or ((Get-Date) -gt $endTime4))
 
