@@ -1,4 +1,4 @@
-﻿<#
+<#
 {
     "Category": 2,
     "Name": "Admin Counsel Queue",
@@ -69,7 +69,7 @@ Function Get-ScreenColor {
         $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
         $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
     }
-    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X,$pos.Y,$pos.X + 1,$pos.Y + 1)
+    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
     $bmp = New-Object System.Drawing.Bitmap(1,1)
     $graphics = [System.Drawing.Graphics]::FromImage($bmp)
     $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
@@ -201,12 +201,12 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             Start-sleep -Milliseconds 50
             $PixelRGB = Get-ScreenColor
 
-            if ($PixelRGB -eq "rgb(206,225,242)") {
+            if ($PixelRGB -eq "rgb(206, 225, 242)") {
                 write-host "RECORDS FOUND:" $PixelRGB
                 $ListSuccess = 1
             }
 
-            if ($PixelRGB -eq "rgb(211,211,211)") {
+            if ($PixelRGB -eq "rgb(211, 211, 211)") {
                 $Done = 1
                 write-host "LIST EMPTY:" $PixelRGB
                 exit
@@ -250,19 +250,19 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             Start-sleep -Milliseconds 10
             $PixelRGB = Get-ScreenColor
 
-            if ($PixelRGB -eq "rgb(241,243,241)") {
+            if ($PixelRGB -eq "rgb(241, 243, 241)") {
                 Continue
             }
 
-            if ($PixelRGB -eq "rgb(0,0,0)") {
+            if ($PixelRGB -eq "rgb(0, 0, 0)") {
                 $MTMSkip = 1
             }
 
-            if ($PixelRGB -eq "rgb(168,170,168)") {
+            if ($PixelRGB -eq "rgb(168, 170, 168)") {
                 $MTMSkip = 1
             }
 
-            if ($PixelRGB -eq "rgb(0,178,0)") {
+            if ($PixelRGB -eq "rgb(0, 178, 0)") {
                 $MTMSuccess = 1
             }
 
@@ -299,7 +299,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             Start-sleep -Milliseconds 10
             $PixelRGB1 = Get-ScreenColor
             #Stop if green
-            if ($PixelRGB1 -eq "rgb(7,165,5)") {
+            if ($PixelRGB1 -eq "rgb(7, 165, 5)") {
                 $CheckStop = 1
                 break
             }
@@ -320,14 +320,14 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,29,385}]"
             Start-sleep -Milliseconds 10
             $PixelRGB = Get-ScreenColor
-            if ($PixelRGB -eq "rgb(7,165,5)") {
+            if ($PixelRGB -eq "rgb(7, 165, 5)") {
                 $CheckStop = 1
             }
-            if ($PixelRGB -eq "rgb(251,251,251)") {
+            if ($PixelRGB -eq "rgb(251, 251, 251)") {
                 COntinue
             }
 
-            if ($PixelRGB -eq "rgb(7,165,5)") {
+            if ($PixelRGB -eq "rgb(7, 165, 5)") {
                 $CheckStop = 1
             }
 
