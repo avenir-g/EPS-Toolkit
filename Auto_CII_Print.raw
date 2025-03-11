@@ -89,6 +89,7 @@ Start-sleep -Milliseconds 500
 $Checkpoint = Get-Clipboard
 if ($Checkpoint -ne "Fill") {
     Write-Host "Not Fill!"
+    . .\errorHandler.ps1 "Not on Fill Queue!"
     exit
 }
 & $Clavier /sendkeys "[{Focus,0,*EPS/*}][][Alt + f]"
@@ -138,6 +139,7 @@ Do {
     }
 } Until (($Rx.StartsWith("2") -ne $true) -or ($Rx.StartsWith("4") -eq $true))
 if ($data.Count -eq 0) {
+    . .\errorHandler.ps1 "No C-IIs found!"
     exit
 }
 Start-sleep -Milliseconds 600
@@ -181,6 +183,7 @@ $loopCount = 0
 
 $FinalData = $data | Where-Object -FilterScript { ([int]$_.OnHand -ne 0) } | Where-Object -FilterScript { ([int]$_.OnHand -ge [int]$_.Fill) }
 if ($FinalData.Count -eq 0) {
+    . .\errorHandler.ps1 "No CIIs found in stock!"
     exit
 }
 
