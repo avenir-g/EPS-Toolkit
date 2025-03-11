@@ -291,7 +291,6 @@ Do {
     $Submit = "[{Focus,0,*EPS/*}]" + $NDC + "[Enter][]" + $OnHand + "[][TAB][][Alt + c]"
     & $Clavier /sendkeys $Submit
     Start-sleep -Milliseconds 400
-    pause
     & $Clavier /sendkeys $Auth
     start-sleep -Milliseconds 800
 
