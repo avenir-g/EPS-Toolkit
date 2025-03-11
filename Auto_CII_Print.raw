@@ -138,7 +138,7 @@ Do {
     }
 } Until (($Rx.StartsWith("2") -ne $true) -or ($Rx.StartsWith("4") -eq $true))
 if ($data.Count -eq 0) {
-    pause
+    exit
 }
 Start-sleep -Milliseconds 600
 
