@@ -222,6 +222,7 @@ Do {
     Start-sleep -Milliseconds 500
 
     $TargetSuccess = 0
+    $NDC = ""
 
     Do {
         [System.Windows.Forms.SendKeys]::SendWait("^c")
@@ -236,6 +237,13 @@ Do {
 
         $PreviousRx = $CurrentRx
         Set-Clipboard " "
+
+        $GetNDC = "[{Focus,0,*EPS/*}][{MouseMoveToFocus,358,548}][Win + Shift + Alt + Q][{Wait,1}][{MouseMoveBy,90,18}][][][ENTER]"
+        & $Clavier /sendkeys $GetNDC
+        Start-sleep -Milliseconds 700
+        $NDC = (Get-Clipboard) -replace "\?", "7"
+        Start-sleep -Milliseconds 100
+        Write-Host $NDC
 
         [System.Windows.Forms.SendKeys]::SendWait("%{r}")
         Start-sleep -Milliseconds 200        
@@ -262,13 +270,13 @@ Do {
             break
         }
     } Until ($TargetSuccess -eq 1)
-    Start-sleep -Milliseconds 500
+    Start-sleep -Milliseconds 200
 
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,300,145}][{MouseButton,L}][Ctrl + C]"
     Start-sleep -Milliseconds 300
     $DrugName = (Get-Clipboard).Split("`t")[1]
     Start-sleep -Milliseconds 500
-    $DrugInfo = "[{Focus,0,*EPS/*}][Alt + I][][DOWN][][RIGHT][][ENTER][{Focus,300,Package*}][Shift + Tab][][Space][][TAB][]" + $DrugName + "[][ENTER]"
+    $DrugInfo = "[{Focus,0,*EPS/*}][Alt + I][][DOWN][][RIGHT][][ENTER][{Focus,300,Package*}][Shift + Tab][][Space][][TAB][][TAB][]" + $NDC + "[][ENTER]"
     & $Clavier /sendkeys $DrugInfo
     Start-sleep -Milliseconds 1500
     & $Clavier /sendkeys "[{Focus,0,Package*}][Ctrl + C][Alt + S]"
