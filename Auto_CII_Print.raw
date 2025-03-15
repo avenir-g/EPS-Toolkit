@@ -1,4 +1,4 @@
-﻿<# 
+<# 
 {
     "Category": 3,
     "Name": "CII Print",
@@ -184,9 +184,61 @@ $loopCount = 0
 $FinalData = $data | Where-Object -FilterScript { ([int]$_.OnHand -ne 0) } | Where-Object -FilterScript { ([int]$_.OnHand -ge [int]$_.Fill) }
 if ($FinalData.Count -eq 0) {
     . .\errorHandler.ps1 "No CII's found in stock!"
-    exit
 }
 
-$FinalData | select -Property Drug, Fill, OnHand | sort-object Drug | clip
-$FinalData | select -Property Drug, Fill, OnHand | sort-object Drug | Out-Printer -Name $Printer
-$FinalData | select -Property Drug, Fill, OnHand | sort-object Drug
+$Data | select -Property Drug, Fill, OnHand | sort-object Drug | clip
+$Data | select -Property Drug, Fill, OnHand | sort-object Drug
+
+# Create a new form
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Data Display"
+$form.Size = New-Object System.Drawing.Size(600, 400)
+$form.TopMost = $true  # Set the form to be topmost
+
+# Create a RichTextBox to display the data
+$richTextBox = New-Object System.Windows.Forms.RichTextBox
+$richTextBox.Multiline = $true
+$richTextBox.Dock = [System.Windows.Forms.DockStyle]::Fill
+$richTextBox.Font = New-Object System.Drawing.Font("Consolas", 10)
+
+# Convert the data to a formatted string for display
+$dataString = $data | Format-Table | Out-String
+
+# Set the text of the RichTextBox
+$richTextBox.Text = $dataString
+
+# Create a panel for buttons
+$buttonPanel = New-Object System.Windows.Forms.Panel
+$buttonPanel.Dock = [System.Windows.Forms.DockStyle]::Bottom
+$buttonPanel.Height = 50
+
+# Create a Cancel button
+$cancelButton = New-Object System.Windows.Forms.Button
+$cancelButton.Text = "Cancel"
+$cancelButton.Dock = [System.Windows.Forms.DockStyle]::Left
+$cancelButton.Width = 100
+$cancelButton.Add_Click({
+    $form.Close()
+})
+
+# Create a Print button
+$printButton = New-Object System.Windows.Forms.Button
+$printButton.Text = "Print"
+$printButton.Dock = [System.Windows.Forms.DockStyle]::Right
+$printButton.Width = 100
+$printButton.Add_Click({
+    $FinalData = $data | Select-Object Drug, Fill, OnHand | Sort-Object Drug
+    $FinalData | Out-Printer -Name $Printer
+    $form.Close()
+})
+
+# Add buttons to the panel
+$buttonPanel.Controls.Add($cancelButton)
+$buttonPanel.Controls.Add($printButton)
+
+# Add the RichTextBox and button panel to the form
+$form.Controls.Add($richTextBox)
+$form.Controls.Add($buttonPanel)
+
+# Show the form
+$form.ShowDialog()
