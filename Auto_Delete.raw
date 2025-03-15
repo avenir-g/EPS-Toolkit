@@ -3,7 +3,7 @@
     "Category": 2,
     "Name": "Auto Delete",
     "Shortcut": "Shift + Delete",
-    "Info": "Auto-deletes call requests, denials, and TP exceptions older than 2 months from the Open Call Queue. [Start on Open Call Queue screen]"
+    "Info": "Auto-deletes call requests, denials, and TP exceptions older than 1 month from the Open Call Queue. [Start on Open Call Queue screen]"
 }
 #>
 
@@ -214,20 +214,20 @@ $Auth = "[{Focus,0,Enterprise Pharmacy System}][{MouseMoveToFocus,100,93}][][{Mo
 
 if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
     $CounterDone = 0
-    #Calculate -2 month from Today
-    $2Months = (Get-Date).AddMonths(-2)
-    $Today = (Get-Date).AddMonths(-2).ToString('MM/dd/yyyy')
+    #Calculate -1 month from Today
+    $1Month = (Get-Date).AddMonths(-1)
+    $Today = (Get-Date).ToString('MM/dd/yyyy')
 
     #Sort Queue by oldest date
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,800,230}][{MouseButton,L}][][{MouseMoveToFocus,800,250}][{MouseButton,L}][][Ctrl + C]"
     Start-sleep -Milliseconds 400
     $CallDate = [datetime]::parseexact((Get-Clipboard).Split("`t")[9].Substring(0,10), 'yyyy-MM-dd', $null)
 
-    if ($CallDate -gt $2Months) {
+    if ($CallDate -gt $1Month) {
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,800,230}][{MouseButton,L}][][{MouseMoveToFocus,800,250}][{MouseButton,L}][][Ctrl + C]"
         Start-sleep -Milliseconds 400
         $CallDate2 = [datetime]::parseexact((Get-Clipboard).Split("`t")[9].Substring(0,10), 'yyyy-MM-dd', $null)
-        if ($CallDate -and $CallDate2 -gt $2Months) {
+        if ($CallDate -and $CallDate2 -gt $1Month) {
             . ./successHandler.ps1 "Done! Deleted $CounterDone call(s)!`nNo more calls found over 2 months!"
             exit
         }
@@ -264,7 +264,7 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
         $CurrentCallTask = (Get-Clipboard).Split("`t")[5]
         $CurrentCallDate = [datetime]::parseexact((Get-Clipboard).Split("`t")[9].Substring(0,10), 'yyyy-MM-dd', $null)
 
-        if (($CurrentCall -eq $PreviousCall) -or ($CurrentCallDate -gt $2Months)) {
+        if (($CurrentCall -eq $PreviousCall) -or ($CurrentCallDate -gt $1Month)) {
             . ./successHandler.ps1 "Done! Deleted $CounterDone call(s)!`nNo more calls found over 2 months!"
             exit
         }
@@ -577,7 +577,7 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
         exit
     }
 
-    } Until ($CurrentCallDate -gt $2Months)
+    } Until ($CurrentCallDate -gt $1Month)
     # Display success message
     . ./successHandler.ps1 "All Done!"
 }
