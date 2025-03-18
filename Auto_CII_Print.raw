@@ -182,9 +182,6 @@ $loopCount = 0
 }
 
 $FinalData = $data | Where-Object -FilterScript { ([int]$_.OnHand -ne 0) } | Where-Object -FilterScript { ([int]$_.OnHand -ge [int]$_.Fill) }
-if ($FinalData.Count -eq 0) {
-    . .\errorHandler.ps1 "No CII's found in stock!"
-}
 
 $Data | select -Property Drug, Fill, OnHand | sort-object Drug | clip
 $Data | select -Property Drug, Fill, OnHand | sort-object Drug
@@ -201,8 +198,8 @@ $richTextBox.Multiline = $true
 $richTextBox.Dock = [System.Windows.Forms.DockStyle]::Fill
 $richTextBox.Font = New-Object System.Drawing.Font("Consolas", 10)
 
-# Convert the data to a formatted string for display
-$dataString = $data | Format-Table | Out-String
+# Convert the data to a formatted string for display, sorted by Drug
+$dataString = $data | Sort-Object Drug | Format-Table | Out-String
 
 # Set the text of the RichTextBox
 $richTextBox.Text = $dataString
@@ -227,8 +224,11 @@ $printButton.Text = "Print"
 $printButton.Dock = [System.Windows.Forms.DockStyle]::Right
 $printButton.Width = 100
 $printButton.Add_Click({
-    $FinalData = $data | Select-Object Drug, Fill, OnHand | Sort-Object Drug
-    $FinalData | Out-Printer -Name $Printer
+    if ($FinalData.Count -eq 0) {
+        . .\errorHandler.ps1 "No CII's found in stock!`nNothing to print!"
+    } else {
+        $FinalData | select -Property Drug, Fill, OnHand | sort-object Drug | Out-Printer -Name $Printer
+    }
     $form.Close()
 })
 
