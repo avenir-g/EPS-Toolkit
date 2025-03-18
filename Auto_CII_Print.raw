@@ -240,5 +240,8 @@ $buttonPanel.Controls.Add($printButton)
 $form.Controls.Add($richTextBox)
 $form.Controls.Add($buttonPanel)
 
+# Set the form to be topmost
+$form.TopMost = $true
+
 # Show the form
 $form.ShowDialog()
