@@ -186,6 +186,7 @@ $loopCount = 0
 }
 
 # Separate drugs into in stock and not in stock, and convert to formatted strings
+$inStock = $data | Where-Object { [int]$_.OnHand -ge [int]$_.Fill }
 $finalDataString = $data | Where-Object { [int]$_.OnHand -ge [int]$_.Fill } | Sort-Object Drug | Format-Table | Out-String
 $notInStockString = $data | Where-Object { [int]$_.OnHand -lt [int]$_.Fill } | Sort-Object Drug | Format-Table | Out-String
 
@@ -207,7 +208,7 @@ $richTextBox.Font = New-Object System.Drawing.Font("Consolas", 10)
 
 # Combine the strings
 $dataString = $finalDataString + $notInStockString
-if ($finalDataString.Count -eq 0) {
+if ($inStock.Count -eq 0) {
     . .\errorHandler.ps1 "No CII's found in stock!`nNothing to print!"
 } else {
     $dataString | Out-Printer -Name $Printer
@@ -236,7 +237,7 @@ $printButton.Text = "Print Again"
 $printButton.Dock = [System.Windows.Forms.DockStyle]::Right
 $printButton.Width = 100
 $printButton.Add_Click({
-    if ($finalDataString.Count -eq 0) {
+    if ($inStock.Count -eq 0) {
         . .\errorHandler.ps1 "No CII's found in stock!`nNothing to print!"
     } else {
         $dataString | Out-Printer -Name $Printer
