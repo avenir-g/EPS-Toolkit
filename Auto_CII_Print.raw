@@ -208,9 +208,7 @@ $richTextBox.Font = New-Object System.Drawing.Font("Consolas", 10)
 
 # Combine the strings
 $dataString = $finalDataString + $notInStockString
-if ($inStock.Count -eq 0) {
-    . .\errorHandler.ps1 "No CII's found in stock!`nNothing to print!"
-} else {
+if ($inStock.Count -ne 0) {
     $dataString | Out-Printer -Name $Printer
 }
 
