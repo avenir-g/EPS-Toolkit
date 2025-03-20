@@ -7,6 +7,10 @@
 }
 #>
 
+$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+add-type -name win -member $dllvar -namespace native
+[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
+
 # Set the working directory to the script's location
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 Set-Location -Path $scriptDir
@@ -181,16 +185,19 @@ $loopCount = 0
     $data[($_ - 1)].OnHand = $onHandCache[$Drug]
 }
 
-$FinalData = $data | Where-Object -FilterScript { ([int]$_.OnHand -ne 0) } | Where-Object -FilterScript { ([int]$_.OnHand -ge [int]$_.Fill) }
-
-$Data | select -Property Drug, Fill, OnHand | sort-object Drug | clip
-$Data | select -Property Drug, Fill, OnHand | sort-object Drug
+# Separate drugs into in stock and not in stock, and convert to formatted strings
+$finalDataString = $data | Where-Object { [int]$_.OnHand -ge [int]$_.Fill } | Sort-Object Drug | Format-Table | Out-String
+$notInStockString = $data | Where-Object { [int]$_.OnHand -lt [int]$_.Fill } | Sort-Object Drug | Format-Table | Out-String
 
 # Create a new form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Data Display"
 $form.Size = New-Object System.Drawing.Size(600, 400)
-$form.TopMost = $true  # Set the form to be topmost
+$form.TopMost = $true
+
+# Position the form in the top left corner of the screen
+$form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+$form.Location = New-Object System.Drawing.Point(20, 20)
 
 # Create a RichTextBox to display the data
 $richTextBox = New-Object System.Windows.Forms.RichTextBox
@@ -198,8 +205,13 @@ $richTextBox.Multiline = $true
 $richTextBox.Dock = [System.Windows.Forms.DockStyle]::Fill
 $richTextBox.Font = New-Object System.Drawing.Font("Consolas", 10)
 
-# Convert the data to a formatted string for display, sorted by Drug
-$dataString = $data | Sort-Object Drug | Format-Table | Out-String
+# Combine the strings
+$dataString = $finalDataString + $notInStockString
+if ($finalDataString.Count -eq 0) {
+    . .\errorHandler.ps1 "No CII's found in stock!`nNothing to print!"
+} else {
+    $dataString | Out-Printer -Name $Printer
+}
 
 # Set the text of the RichTextBox
 $richTextBox.Text = $dataString
@@ -220,16 +232,15 @@ $cancelButton.Add_Click({
 
 # Create a Print button
 $printButton = New-Object System.Windows.Forms.Button
-$printButton.Text = "Print"
+$printButton.Text = "Print Again"
 $printButton.Dock = [System.Windows.Forms.DockStyle]::Right
 $printButton.Width = 100
 $printButton.Add_Click({
-    if ($FinalData.Count -eq 0) {
+    if ($finalDataString.Count -eq 0) {
         . .\errorHandler.ps1 "No CII's found in stock!`nNothing to print!"
     } else {
-        $FinalData | select -Property Drug, Fill, OnHand | sort-object Drug | Out-Printer -Name $Printer
+        $dataString | Out-Printer -Name $Printer
     }
-    $form.Close()
 })
 
 # Add buttons to the panel
@@ -239,9 +250,6 @@ $buttonPanel.Controls.Add($printButton)
 # Add the RichTextBox and button panel to the form
 $form.Controls.Add($richTextBox)
 $form.Controls.Add($buttonPanel)
-
-# Set the form to be topmost
-$form.TopMost = $true
 
 # Show the form
 $form.ShowDialog()
