@@ -228,7 +228,7 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
         Start-sleep -Milliseconds 500
         $CallDate2 = [datetime]::parseexact((Get-Clipboard).Split("`t")[9].Substring(0,10), 'yyyy-MM-dd', $null)
         if ($CallDate -and $CallDate2 -gt $1Month) {
-            . ./successHandler.ps1 "Done! Deleted $CounterDone call(s)!`nNo more calls found over 2 months!"
+            . ./successHandler.ps1 "Done! Deleted $CounterDone call(s)!`nNo more calls found over 1 month!"
             exit
         }
         Start-sleep -Milliseconds 400
@@ -265,7 +265,7 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
         $CurrentCallDate = [datetime]::parseexact((Get-Clipboard).Split("`t")[9].Substring(0,10), 'yyyy-MM-dd', $null)
 
         if (($CurrentCall -eq $PreviousCall) -or ($CurrentCallDate -gt $1Month)) {
-            . ./successHandler.ps1 "Done! Deleted $CounterDone call(s)!`nNo more calls found over 2 months!"
+            . ./successHandler.ps1 "Done! Deleted $CounterDone call(s)!`nNo more calls found over 1 month!"
             Write-Host "DONE"
             exit
         }
