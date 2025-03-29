@@ -1,6 +1,15 @@
-$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
-add-type -name win -member $dllvar -namespace native
-[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
+<#
+{
+    "Category": 3,
+    "Name": "Cycle Count",
+    "Shortcut": "Shift + F7",
+    "Info": "Automatically processes and removes cycle counts. [Start on Cycle Count screen]"
+}
+#>
+
+#$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+#add-type -name win -member $dllvar -namespace native
+#[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
 
 # Set the working directory to the script's location
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
@@ -98,7 +107,7 @@ Function Get-ScreenColor {
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-type -AssemblyName Microsoft.VisualBasic
-Add-Type -AssemblyName System.Drawing.Text
+Add-Type -AssemblyName System.Drawing
 
 # Load custom font
 $fontCollection = New-Object System.Drawing.Text.PrivateFontCollection
@@ -220,16 +229,16 @@ Do {
     }
 
     Start-sleep -Milliseconds 500
-
+    $PreviousRx = ""
     $TargetSuccess = 0
-    $NDC = ""
+    $OCR_NDC = ""
 
     Do {
         [System.Windows.Forms.SendKeys]::SendWait("^c")
-        Start-sleep -Milliseconds 20
+        Start-sleep -Milliseconds 100
         $CurrentRx = (Get-Clipboard).Split("`t")[8]
         
-        if (($CurrentRx -eq $PreviousRx)) {
+        if ($CurrentRx -eq $PreviousRx) {
             $exit = 1
             . ./successHandler.ps1 "All Done!`nRemoved $CounterDone cycle count(s)!"
             exit
@@ -238,12 +247,12 @@ Do {
         $PreviousRx = $CurrentRx
         Set-Clipboard " "
 
-        $GetNDC = "[{Focus,0,*EPS/*}][{MouseMoveToFocus,358,548}][Win + Shift + Alt + Q][{Wait,1}][{MouseMoveBy,90,18}][][][ENTER]"
+        $GetNDC = "[{Focus,0,*EPS/*}][{MouseMoveToFocus,358,548}][Win + Shift + Alt + Q][{Wait,50}][{MouseMoveBy,90,18}][][][ENTER]"
         & $Clavier /sendkeys $GetNDC
-        Start-sleep -Milliseconds 700
-        $NDC = (Get-Clipboard) -replace "\?", "7"
-        Start-sleep -Milliseconds 100
-        Write-Host $NDC
+        Start-sleep -Milliseconds 800
+        $OCR_NDC = ((Get-Clipboard) -replace "\s", "" -replace "\?", "7")[7] + ((Get-Clipboard) -replace "\s", "" -replace "\?", "7")[-1]
+        Start-sleep -Milliseconds 150
+        Write-Host $OCR_NDC
 
         [System.Windows.Forms.SendKeys]::SendWait("%{r}")
         Start-sleep -Milliseconds 200        
@@ -276,12 +285,50 @@ Do {
     Start-sleep -Milliseconds 300
     $DrugName = (Get-Clipboard).Split("`t")[1]
     Start-sleep -Milliseconds 500
-    $DrugInfo = "[{Focus,0,*EPS/*}][Alt + I][][DOWN][][RIGHT][][ENTER][{Focus,300,Package*}][Shift + Tab][][Space][][TAB][][TAB][]" + $NDC + "[][ENTER]"
+    Write-Host $DrugName
+    $DrugInfo = "[{Focus,0,*EPS/*}][Alt + I][][DOWN][][RIGHT][][ENTER][{Focus,300,Package*}][Shift + Tab][][Space][][TAB][]" + $DrugName + "[][ENTER]"
     & $Clavier /sendkeys $DrugInfo
     Start-sleep -Milliseconds 1500
-    & $Clavier /sendkeys "[{Focus,0,Package*}][Ctrl + C][Alt + S]"
-    Start-sleep -Milliseconds 200
-    $NDC = (Get-Clipboard).Split("`t")[2]
+
+    $LastMatch = ""
+    $NDC = ""
+    $TargetSuccess =""
+
+    Do {
+        & $Clavier /sendkeys "[{Focus,0,Package*}][Ctrl + C][]"
+        Start-sleep -Milliseconds 200
+        $NDC = (Get-Clipboard).Split("`t")[2]
+        $Match = $NDC[7] + $NDC[-1]
+        Start-sleep -Milliseconds 100
+        Write-Host $NDC $Match
+
+        if ([int]$Match -eq [int]$LastMatch) {
+            Write-Host "Duplicate. ESC"
+            $TargetSuccess = 0
+            break
+        }
+
+        $LastMatch = $Match
+
+        if ([int]$Match -eq [int]$OCR_NDC) {
+            Write-Host "OCR NDC Match!"
+             $TargetSuccess = 1
+            break
+        }
+        if ([int]$Match -ne [int]$OCR_NDC) {
+            & $Clavier /sendkeys "[{Focus,0,Package*}][Down]"
+            Start-sleep -Milliseconds 50
+        }
+    } Until (($TargetSuccess -eq 1) -or ($TargetSuccess -eq 0))
+
+    if ($TargetSuccess -eq 0) {
+        Write-Host "Restart New Loop"
+        & $Clavier /sendkeys "[{Focus,0,Package*}][Alt+F4][][Alt+b]"
+        Start-sleep -Milliseconds 400
+        $Skipped++
+        continue
+    }
+    & $Clavier /sendkeys "[{Focus,0,Package*}][Alt + S]"
     Start-sleep -Milliseconds 200
     $GetOnHand = "[{Focus,0,*EPS/*}][{MouseMoveToFocus,549,631}][Win + Shift + Alt + Q][][{MouseMoveBy,129,23}][][][ENTER]"
     & $Clavier /sendkeys $GetOnHand
