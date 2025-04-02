@@ -258,7 +258,7 @@ if ($result -eq 1) {
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,170,210}][{MouseButton,L}][][{MouseButton,L}]"
     Start-sleep -Milliseconds 400
     [System.Windows.Forms.SendKeys]::SendWait("^c")
-    $TargetRx = (Get-Clipboard).Split("`t")[4]
+    $TargetRx = ((Get-Clipboard).Split("`t")[4] -replace "[<>&%]", "")
     $PartialTargetName = ($TargetRx).Split(" ")[0]
     $PartialTargetNumber = ($TargetRx -split '\s+' -match '\d')
     $Today = Get-Date -Format "MM/dd/yyyy"
@@ -309,7 +309,7 @@ if ($result -eq 1) {
     1..$Autofills | % {
     Start-sleep -Milliseconds 50
     [System.Windows.Forms.SendKeys]::SendWait("^c")
-    $CheckRx = (Get-Clipboard).Split("`t")[2]
+    $CheckRx = ((Get-Clipboard).Split("`t")[2] -replace "[<>&%]", "")
     Start-sleep -Milliseconds 20
     Write-Host "$_ $CheckRx"
     $POS = if ($_ -le 6) {$_} else {6}
@@ -413,7 +413,7 @@ if ($result -eq 1) {
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,200,192}][{MouseButton,L}][][{MouseButton,L}]"
     Start-sleep -Milliseconds 400
     [System.Windows.Forms.SendKeys]::SendWait("^c")
-    $TargetRx = (Get-Clipboard).Split("`t")[1]
+    $TargetRx = ((Get-Clipboard).Split("`t")[1] -replace "[<>&%]", "")
     $NoteRx = "[DENIED] [" + $Today + "] `n[" + $TargetRx + "] `n" + (Get-Clipboard).Split("`t")[3] | foreach {$_.replace("%","")} | foreach {$_.replace("&","")} | Set-Clipboard
     Write-Host "Target: $TargetRx"
     [System.Windows.Forms.SendKeys]::SendWait("%{x}")
@@ -459,7 +459,7 @@ if ($result -eq 1) {
         1..$Autofills | % {
         Start-sleep -Milliseconds 50
         [System.Windows.Forms.SendKeys]::SendWait("^c")
-        $CheckRx = (Get-Clipboard).Split("`t")[2]
+        $CheckRx = ((Get-Clipboard).Split("`t")[2] -replace "[<>&%]", "")
         Start-sleep -Milliseconds 20
         Write-Host "$_ $CheckRx"
         $POS = if ($_ -le 6) {$_} else {6}
