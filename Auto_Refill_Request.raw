@@ -25,7 +25,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # List of variables to check
-$variables = @{
+$variables = @{ 
     "Main" = $Main
     "Clavier" = $Clavier
     "Cap2Txt" = $Cap2Txt
@@ -100,7 +100,7 @@ Function Get-ScreenColor {
 Add-type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Drawing.Text
+Add-Type -AssemblyName System.Drawing
 
 # Load custom font
 $fontCollection = New-Object System.Drawing.Text.PrivateFontCollection
@@ -283,7 +283,6 @@ if ($result4 -eq [System.Windows.Forms.DialogResult]::OK) {
     #MAIN LOOP
     $Counter = 1
     Write-Host $Counter $Queue
-    $PreviousRx = ""
 
     Do {
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,150,250}][][{MouseButton,L}][][Ctrl + C]"
@@ -291,13 +290,14 @@ if ($result4 -eq [System.Windows.Forms.DialogResult]::OK) {
         $timeout = New-TimeSpan -Seconds 35
         $endTime = (Get-Date).Add($timeout)
         $result = 0
+        $PreviousRx = ""
         do {
             Set-Clipboard -Value " "
             [System.Windows.Forms.SendKeys]::SendWait("^c")
             Start-sleep -Milliseconds 70
             $CurrentRx = (Get-Clipboard).Split("`t")[0,2]
             Write-Host "[BEFORE] Current: $CurrentRx | Previous: $PreviousRx"
-            if ($CurrentRx -eq $PreviousRx) { 
+            if ([string]$CurrentRx -eq [string]$PreviousRx) { 
                 # Display success message
                 . ./successHandler.ps1 "No more calls found!`nPrinted $CounterDone call(s)!"
                 exit
