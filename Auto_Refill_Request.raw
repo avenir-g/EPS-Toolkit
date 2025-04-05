@@ -100,7 +100,6 @@ Function Get-ScreenColor {
 Add-type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Drawing
 
 # Load custom font
 $fontCollection = New-Object System.Drawing.Text.PrivateFontCollection
@@ -268,11 +267,13 @@ if ($result4 -eq [System.Windows.Forms.DialogResult]::OK) {
     if ($Failed.Checked -eq $false) {
         $Queue = $Refills.Text
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,900,230}][{MouseButton,L}][][{MouseMoveToFocus,900,250}][{MouseButton,L}][][Ctrl + C]"
-        Start-sleep -Milliseconds 400
+        Start-sleep -Milliseconds 300
         $RxDate1 = (Get-Clipboard).Split("`t")[10].Split(" ")[0]
+        Start-sleep -Milliseconds 50
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,900,230}][{MouseButton,L}][][{MouseMoveToFocus,900,250}][{MouseButton,L}][][Ctrl + C]"
-        Start-sleep -Milliseconds 400
+        Start-sleep -Milliseconds 300
         $RxDate2 = (Get-Clipboard).Split("`t")[10].Split(" ")[0]
+        Start-sleep -Milliseconds 50
         if ($RxDate2 -gt $RxDate1) {
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,900,230}][{MouseButton,L}][][{MouseMoveToFocus,900,250}][{MouseButton,L}]"
             Start-sleep -Milliseconds 400
