@@ -300,10 +300,10 @@ Do {
         $NDC = (Get-Clipboard).Split("`t")[2]
         $Match = $NDC[7] + $NDC[-1]
         Start-sleep -Milliseconds 100
-        Write-Host $NDC $Match
+        Write-Host $NDC $Match $LastMatch $OCR_NDC
 
-        if ([int]$Match -eq [int]$LastMatch) {
-            Write-Host "Duplicate. ESC"
+        if ([string]$Match -eq [string]$LastMatch) {
+            Write-Host "End of List! Restart Loop"
             $TargetSuccess = 0
             break
         }
@@ -322,7 +322,7 @@ Do {
     } Until (($TargetSuccess -eq 1) -or ($TargetSuccess -eq 0))
 
     if ($TargetSuccess -eq 0) {
-        Write-Host "Restart New Loop"
+        Write-Host "Restarting Loop"
         & $Clavier /sendkeys "[{Focus,0,Package*}][Alt+F4][][Alt+b]"
         Start-sleep -Milliseconds 400
         $Skipped++
