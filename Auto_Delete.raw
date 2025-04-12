@@ -54,7 +54,7 @@ if (! (ps | ? { $_.path -eq $prog })) {
 Set-Clipboard " "
 & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,418,175}][Win + Shift + Alt + Q][][{MouseMoveBy,154,23}][][][ENTER]"
 Start-sleep -Milliseconds 500
-$Checkpoint = Get-Clipboard
+$Checkpoint = (Get-Clipboard) -replace '\|', 'l'
 
 if (-Not (($Checkpoint -eq "All Calls") -or ($Checkpoint -eq "Patient") -or ($Checkpoint -eq "Prescriber") -or ($Checkpoint -eq "Insurance") -or ($Checkpoint -eq "Pharmacy"))) {
     . ./errorHandler.ps1 "Not on Open Call Queue!`n[Ctrl + O]"
