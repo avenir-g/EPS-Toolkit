@@ -223,7 +223,7 @@ Do {
             }
             if ($_ -gt 1) {
                 & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Down]"
-                Start-sleep -Milliseconds 50
+                Start-sleep -Milliseconds 30
             }
         }
     }
@@ -249,9 +249,9 @@ Do {
 
         $GetNDC = "[{Focus,0,*EPS/*}][{MouseMoveToFocus,358,548}][Win + Shift + Alt + Q][{Wait,50}][{MouseMoveBy,90,18}][][][ENTER]"
         & $Clavier /sendkeys $GetNDC
-        Start-sleep -Milliseconds 800
-        $OCR_NDC = ((Get-Clipboard) -replace "\s", "" -replace "\?", "7")[7] + ((Get-Clipboard) -replace "\s", "" -replace "\?", "7")[-1]
-        Start-sleep -Milliseconds 150
+        Start-sleep -Milliseconds 600
+        $OCR_NDC = ((Get-Clipboard) -replace "\s", "" -replace "\?", "7")[7] + -join ((Get-Clipboard) -replace "\s", "" -replace "\?", "7")[-2..-1]
+        Start-sleep -Milliseconds 100
         Write-Host $OCR_NDC
 
         [System.Windows.Forms.SendKeys]::SendWait("%{r}")
@@ -298,7 +298,7 @@ Do {
         & $Clavier /sendkeys "[{Focus,0,Package*}][Ctrl + C][]"
         Start-sleep -Milliseconds 200
         $NDC = (Get-Clipboard).Split("`t")[2]
-        $Match = $NDC[7] + $NDC[-1]
+        $Match = $NDC[7] + -join $NDC[-2..-1]
         Start-sleep -Milliseconds 100
         Write-Host $NDC $Match $LastMatch $OCR_NDC
 
@@ -343,9 +343,9 @@ Do {
         continue
     }
     Start-sleep -Milliseconds 100
-    $Submit = "[{Focus,0,*EPS/*}]" + $NDC + "[Enter][]" + $OnHand + "[][TAB][][Alt + c]"
+    $Submit = "[{Focus,0,*EPS/*}]" + $NDC + "[Enter][][]" + $OnHand + "[][TAB][][Alt + c]"
     & $Clavier /sendkeys $Submit
-    Start-sleep -Milliseconds 400
+    Start-sleep -Milliseconds 500
     & $Clavier /sendkeys $Auth
     start-sleep -Milliseconds 800
 
