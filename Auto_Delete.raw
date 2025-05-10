@@ -11,7 +11,7 @@ $dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int ha
 add-type -name win -member $dllvar -namespace native
 [native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
 
-$ErrorActionPreference = "SilentlyContinue"
+$CheckErrorActionPreference = "SilentlyContinue"
 
 # Set the working directory to the script's location
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
@@ -38,8 +38,8 @@ $variables = @{
 # Check if all necessary variables are defined
 foreach ($var in $variables.GetEnumerator()) {
     if (-not $var.Value) {
-        $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
-        . ./errorHandler.ps1 $errorMessage
+        $CheckErrorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
+        . ./errorHandler.ps1 $CheckErrorMessage
         exit 1
     }
 }
@@ -79,57 +79,18 @@ $Instance.Runspace = $RunSpace
     }).BeginInvoke()
 
 Function Get-ScreenColor {
-
-    [CmdletBinding(DefaultParameterSetName = "None")]
-
-    param(
-        [Parameter(
-            Mandatory = $true,
-            ParameterSetName = "Pos"
-        )]
-        [Int]
-        $X,
-        [Parameter(
-            Mandatory = $true,
-            ParameterSetName = "Pos"
-        )]
-        [Int]
-        $Y
-    )
-    
-    if ($PSCmdlet.ParameterSetName -eq "None") {
-        $pos = [System.Windows.Forms.Cursor]::Position
-    }
-    else {
-        $pos = New-Object psobject
-        $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
-        $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
-    }
-    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
-    $bmp = New-Object System.Drawing.Bitmap(1,1)
+    $pos = [System.Windows.Forms.Cursor]::Position
+    $bmp = New-Object System.Drawing.Bitmap(1, 1)
     $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-    $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
-    $pixel = $bmp.GetPixel(0,0)
-    $red = $pixel.R
-    $green = $pixel.G
-    $blue = $pixel.B
-    $result = New-Object psobject
-    if ($PSCmdlet.ParameterSetName -eq "None") {
-        $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
-        $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
-    }
-    $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
-    $result | Add-Member -MemberType NoteProperty -Name "Red" -Value $red
-    $result | Add-Member -MemberType NoteProperty -Name "Green" -Value $green
-    $result | Add-Member -MemberType NoteProperty -Name "Blue" -Value $blue
-    $result | Add-Member -MemberType NoteProperty -Name "RGB" -value $RGB
-    return $RGB
+    $graphics.CopyFromScreen($pos, [System.Drawing.Point]::Empty, $bmp.Size)
+    $pixel = $bmp.GetPixel(0, 0)
+
+    return "rgb($($pixel.R), $($pixel.G), $($pixel.B))"
 }
 
 Add-type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Drawing.Text
 
 # Load custom font
 $fontCollection = New-Object System.Drawing.Text.PrivateFontCollection
@@ -524,27 +485,27 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
 
         #CHECKPOINT: Error
         $endTime = (Get-Date).Add((New-TimeSpan -Seconds 2))
-        $Error = 0
+        $CheckError = 0
         Do {
             if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Error"))) {
                 & $Clavier /sendkeys "[{Focus,0,Error*}][ENTER]"
                 Start-sleep -Milliseconds 200
                 Write-Host "ACTION: ERROR"
-                $Error = 1
+                $CheckError = 1
             }
-        } Until ($Error -eq 1 -or ((Get-Date) -gt $endTime))
+        } Until ($CheckError -eq 1 -or ((Get-Date) -gt $endTime))
 
         #CHECKPOINT: Cancel
         $endTime = (Get-Date).Add((New-TimeSpan -Seconds 2))
-        $Error = 0
+        $CheckError = 0
         Do {
             if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Cancel"))) {
                 & $Clavier /sendkeys "[{Focus,0,Cancel*}][ENTER]"
                 Start-sleep -Milliseconds 200
                 Write-Host "ACTION: CANCEL"
-                $Error = 1
+                $CheckError = 1
             }
-        } Until ($Error -eq 1 -or ((Get-Date) -gt $endTime))
+        } Until ($CheckError -eq 1 -or ((Get-Date) -gt $endTime))
 
         Start-sleep -Milliseconds 1000
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,200,96}]"
@@ -557,15 +518,15 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
 
             #CHECKPOINT: Error
             $endTime = (Get-Date).Add((New-TimeSpan -Seconds 2))
-            $Error = 0
+            $CheckError = 0
             Do {
                 if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Error"))) {
                     & $Clavier /sendkeys "[{Focus,0,Error*}][ENTER]"
                     Start-sleep -Milliseconds 200
                     Write-Host "CHECKPOINT: ERROR"
-                    $Error = 1
+                    $CheckError = 1
                 }
-            } Until ($Error -eq 1 -or ((Get-Date) -gt $endTime))
+            } Until ($CheckError -eq 1 -or ((Get-Date) -gt $endTime))
         }
     }
 
