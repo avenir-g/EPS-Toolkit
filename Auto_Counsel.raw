@@ -65,7 +65,7 @@ $CurrentRxStatus = ""
 
 Do {
     [System.Windows.Forms.SendKeys]::SendWait("^c")
-    Start-sleep -Milliseconds 10
+    Start-sleep -Milliseconds 15
     $CurrentRxStatus = (Get-Clipboard).Split("`t")[13]
     $CurrentRx = (Get-Clipboard).Split("`t")[0, 4, 5]
     $CurrentRequired = (Get-Clipboard).Split("`t")[9]
