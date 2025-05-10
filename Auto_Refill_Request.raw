@@ -49,51 +49,13 @@ if (! (ps | ? { $_.path -eq $Prog })) {
 }
 
 Function Get-ScreenColor {
-
-    [CmdletBinding(DefaultParameterSetName = "None")]
-
-    param(
-        [Parameter(
-            Mandatory = $true,
-            ParameterSetName = "Pos"
-        )]
-        [Int]
-        $X,
-        [Parameter(
-            Mandatory = $true,
-            ParameterSetName = "Pos"
-        )]
-        [Int]
-        $Y
-    )
-    
-    if ($PSCmdlet.ParameterSetName -eq "None") {
-        $pos = [System.Windows.Forms.Cursor]::Position
-    }
-    else {
-        $pos = New-Object psobject
-        $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
-        $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
-    }
-    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
-    $bmp = New-Object System.Drawing.Bitmap(1,1)
+    $pos = [System.Windows.Forms.Cursor]::Position
+    $bmp = New-Object System.Drawing.Bitmap(1, 1)
     $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-    $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
-    $pixel = $bmp.GetPixel(0,0)
-    $red = $pixel.R
-    $green = $pixel.G
-    $blue = $pixel.B
-    $result = New-Object psobject
-    if ($PSCmdlet.ParameterSetName -eq "None") {
-        $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
-        $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
-    }
-    $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
-    $result | Add-Member -MemberType NoteProperty -Name "Red" -Value $red
-    $result | Add-Member -MemberType NoteProperty -Name "Green" -Value $green
-    $result | Add-Member -MemberType NoteProperty -Name "Blue" -Value $blue
-    $result | Add-Member -MemberType NoteProperty -Name "RGB" -value $RGB
-    return $RGB
+    $graphics.CopyFromScreen($pos, [System.Drawing.Point]::Empty, $bmp.Size)
+    $pixel = $bmp.GetPixel(0, 0)
+
+    return "rgb($($pixel.R), $($pixel.G), $($pixel.B))"
 }
 
 #FORM
@@ -259,8 +221,6 @@ if ($result4 -eq [System.Windows.Forms.DialogResult]::OK) {
         if ($CallDate -lt $2weeks) {
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,800,230}][{MouseButton,L}][][{MouseMoveToFocus,800,250}][{MouseButton,L}]"
             Start-sleep -Milliseconds 400
-            $CallDate2 = [datetime]::parseexact((Get-Clipboard).Split("`t")[9].Substring(0,10), 'yyyy-MM-dd', $null)
-            Start-sleep -Milliseconds 200
         }
     }
 
@@ -399,7 +359,6 @@ if ($result4 -eq [System.Windows.Forms.DialogResult]::OK) {
             $Today = Get-Date -Format "MM/dd/yyyy"
             $LDAP = $User.Text.SubString(0,2)
             $CB = "Fax sent on " + $Today + " [" + $LDAP + "]" | Set-Clipboard
-            $DOW = (Get-Date).DayOfWeek
             $Date = (Get-date).AddDays(10).ToString("MM-dd-yyyy")
             $LogSchedule = '[{Focus,0,Log*}][]DR[TAB][][Ctrl + v][][TAB][]' + $Date + '[TAB][]1P[TAB][][Alt + s][][{Focus,250,*EPS/*}][][Alt + c]'
             & $Clavier /sendkeys $LogSchedule
