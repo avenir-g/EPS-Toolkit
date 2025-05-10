@@ -1,4 +1,4 @@
-﻿<#
+<#
 {
     "Category": 4,
     "Name": "Auto Counsel",
@@ -39,59 +39,20 @@ foreach ($var in $variables.GetEnumerator()) {
 }
 
 Function Get-ScreenColor {
-
-    [CmdletBinding(DefaultParameterSetName = 'None')]
-
-    param(
-        [Parameter(
-            Mandatory = $true,
-            ParameterSetName = "Pos"
-        )]
-        [Int]
-        $X,
-        [Parameter(
-            Mandatory = $true,
-            ParameterSetName = "Pos"
-        )]
-        [Int]
-        $Y
-    )
-    
-    if ($PSCmdlet.ParameterSetName -eq 'None') {
-        $pos = [System.Windows.Forms.Cursor]::Position
-    }
-    else {
-        $pos = New-Object psobject
-        $pos | Add-Member -MemberType NoteProperty -Name "X" -Value $X
-        $pos | Add-Member -MemberType NoteProperty -Name "Y" -Value $Y
-    }
-    $map = [System.Drawing.Rectangle]::FromLTRB($pos.X, $pos.Y, $pos.X + 1, $pos.Y + 1)
+    $pos = [System.Windows.Forms.Cursor]::Position
     $bmp = New-Object System.Drawing.Bitmap(1, 1)
     $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-    $graphics.CopyFromScreen($map.Location, [System.Drawing.Point]::Empty, $map.Size)
+    $graphics.CopyFromScreen($pos, [System.Drawing.Point]::Empty, $bmp.Size)
     $pixel = $bmp.GetPixel(0, 0)
-    $red = $pixel.R
-    $green = $pixel.G
-    $blue = $pixel.B
-    $result = New-Object psobject
-    if ($PSCmdlet.ParameterSetName -eq 'None') {
-        $result | Add-Member -MemberType NoteProperty -Name "X" -Value $([System.Windows.Forms.Cursor]::Position).X
-        $result | Add-Member -MemberType NoteProperty -Name "Y" -Value $([System.Windows.Forms.Cursor]::Position).Y
-    }
-    $RGB = "rgb(" + $red + ", " + $green + ", " + $blue + ")"
-    return $RGB
+
+    return "rgb($($pixel.R), $($pixel.G), $($pixel.B))"
 }
 
 Add-type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 
-Function Get-TimeStamp {
-    
-    return "[{0:MM/dd/yy} {0:hh:mm:ss tt}]" -f (Get-Date)
-}
-
-& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,620,140}][{MouseButton,L}][]"
-Start-sleep -Milliseconds 50
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,620,140}][{MouseButton,L}][]1[Ctrl+A][Backspace]"
+Start-sleep -Milliseconds 200
 [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
 [System.Windows.Forms.SendKeys]::SendWait("{PGUP 2}")
 
@@ -104,6 +65,7 @@ $CurrentRxStatus = ""
 
 Do {
     [System.Windows.Forms.SendKeys]::SendWait("^c")
+    Start-sleep -Milliseconds 10
     $CurrentRxStatus = (Get-Clipboard).Split("`t")[13]
     $CurrentRx = (Get-Clipboard).Split("`t")[0, 4, 5]
     $CurrentRequired = (Get-Clipboard).Split("`t")[9]
@@ -284,5 +246,3 @@ if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise Pharmacy 
     (New-Object Media.SoundPlayer $Audio).PlaySync()
 }
 else { continue }
-
-# Read-Host -Prompt "Press Enter to continue..."
