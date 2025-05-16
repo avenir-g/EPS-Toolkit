@@ -42,6 +42,44 @@ foreach ($var in $variables.GetEnumerator()) {
     }
 }
 
+
+# Define the log file path
+$logFilePath = $Main + "Assets\bin\users_" + $env:COMPUTERNAME + ".log"
+
+# Ensure the log file exists
+if (-not (Test-Path $logFilePath)) {
+    New-Item -Path $logFilePath -ItemType File -Force | Out-Null
+}
+
+# Read existing log entries
+$logEntries = Get-Content $logFilePath
+
+# Initialize flag and updated list
+$userExists = $false
+$updatedEntries = @()
+
+
+function Encrypt-String {
+    param (
+        [string]$PlainText,
+        [string]$KeyString
+    )
+
+    $key = [System.Text.Encoding]::UTF8.GetBytes($KeyString.PadRight(32).Substring(0,32))
+    $aes = [System.Security.Cryptography.Aes]::Create()
+    $aes.Key = $key
+    $aes.GenerateIV()
+    $iv = $aes.IV
+
+    $encryptor = $aes.CreateEncryptor()
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($PlainText)
+    $encrypted = $encryptor.TransformFinalBlock($bytes, 0, $bytes.Length)
+
+    # Combine IV and encrypted data, then convert to Base64
+    $result = [Convert]::ToBase64String($iv + $encrypted)
+    return $result
+}
+
 Function Get-ScreenColor {
     $pos = [System.Windows.Forms.Cursor]::Position
     $bmp = New-Object System.Drawing.Bitmap(1, 1)
@@ -138,7 +176,29 @@ $result6 = $form.ShowDialog()
 $Auth = "[{Focus,0,Enterprise Pharmacy System}][{MouseMoveToFocus,100,93}][][{MouseButton,L}][{MouseMoveToFocus,50,146}][][{MouseButton,L}][]" + $User.Text + "[TAB][]" + $Pass.Text + "[ENTER]"
 
 if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
-    $User.Text + " " + $Pass.Text | Add-Content "\\P051873\users$\s1873c01\Desktop\Shortcuts\Users\User.txt"
+    
+    foreach ($entry in $logEntries) {
+        $entryParts = $entry -split '\|'
+        $decryptedUser = Decrypt-String -EncryptedText $entryParts[0] -KeyString $Main
+
+        if ($decryptedUser -eq $User.Text) {
+            $encryptedUser = Encrypt-String -PlainText $User.Text -KeyString $Main
+            $encryptedPass = Encrypt-String -PlainText $Pass.Text -KeyString $Main
+            $updatedEntries += "$encryptedUser|$encryptedPass"
+            $userExists = $true
+        } else {
+            $updatedEntries += $entry
+        }
+    }
+
+    if (-not $userExists) {
+        $encryptedUser = Encrypt-String -PlainText $User.Text -KeyString $Main
+        $encryptedPass = Encrypt-String -PlainText $Pass.Text -KeyString $Main
+        $updatedEntries += "$encryptedUser|$encryptedPass"
+    }
+
+    # Write back to the log file
+    $updatedEntries | Set-Content -Path $logFilePath -Encoding UTF8
 
     #Move EPS to the side
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,0,0}][{MouseButton,LD}][{MouseMoveTo,880,200}][][{MouseButton,LU}]"
@@ -316,12 +376,13 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+C]"
             Start-sleep -Milliseconds 400
             & $Clavier /sendkeys $Auth
-            Start-sleep -Milliseconds 1000
+            Start-sleep -Milliseconds 1200
             if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
                 & $Clavier /sendkeys "[{Focus,0,Counseling*}][Alt+y]"
             }
             if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Multiple"))) {
                 Write-Host "EXIT: MULTIPLE"
+                exit
             }
             Start-sleep -Milliseconds 500
             if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Login"))) {
@@ -336,7 +397,6 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
         }
 
     } Until ($Done -eq 1)
-
 
 }
 else {
