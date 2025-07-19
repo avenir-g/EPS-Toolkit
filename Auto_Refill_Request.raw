@@ -365,7 +365,13 @@ $PassText.Add_GotFocus({ $PassText.Dispatcher.InvokeAsync({ $PassText.SelectAll(
 $RefillBox.Add_GotFocus({ $RefillBox.Dispatcher.InvokeAsync({ $RefillBox.SelectAll() }, "Background") })
 
 $window.Topmost = $true
-$UserBox.Focus()
+
+$window.Add_ContentRendered({
+    $window.Activate()
+    [Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise Pharmacy System")
+    $UserBox.Focus()
+})
+
 $result = $window.ShowDialog()
 
 if ($result -eq $true) {
