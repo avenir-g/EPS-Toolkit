@@ -301,16 +301,16 @@ Do {
     $OnHand = Get-Clipboard
     Write-Host $DrugName $NDC $OnHand
     [System.Windows.Forms.SendKeys]::SendWait("%{b}")
+    Start-sleep -Milliseconds 700
     if ([int]$OnHand -lt 0) {
         [System.Windows.Forms.SendKeys]::SendWait("%{b}")
         $Skipped++
         Start-sleep -Milliseconds 200
         continue
     }
-    Start-sleep -Milliseconds 100
-    $Submit = "[{Focus,0,*EPS/*}]" + $NDC + "[Enter][][]" + $OnHand + "[][TAB][][Alt + c]"
+    $Submit = "[{Focus,0,*EPS/*}][][{MouseMoveToFocus,60,360}]" + $NDC + "[Enter][][]" + $OnHand + "[][TAB][][Alt + c]"
     & $Clavier /sendkeys $Submit
-    Start-sleep -Milliseconds 500
+    Start-sleep -Milliseconds 800
     & $Clavier /sendkeys $Auth
     start-sleep -Milliseconds 800
 
