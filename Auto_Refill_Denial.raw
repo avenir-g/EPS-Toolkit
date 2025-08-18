@@ -231,7 +231,7 @@ if ($result -eq 1) {
     $NoteRx = "[CANCELED] [" + $Today + "] `n[" + $TargetRx + "]" | Set-Clipboard
     Write-Host "Target: $TargetRx"
     [System.Windows.Forms.SendKeys]::SendWait("%{x}")
-    Start-sleep -Milliseconds 1500
+    Start-sleep -Milliseconds 2000
     & $Clavier /sendkeys "[{Focus,0,Review*}][{MouseMoveToFocus,50,550}][{MouseButton,L}][][TAB][][ENTER]"
     Start-sleep -Milliseconds 300
     [System.Windows.Forms.SendKeys]::SendWait("%{7 2}")
@@ -383,9 +383,9 @@ if ($result -eq 1) {
     $NoteRx = "[DENIED] [" + $Today + "] `n[" + $TargetRx + "] `n" + (Get-Clipboard).Split("`t")[3] | foreach {$_.replace("%","")} | foreach {$_.replace("&","")} | Set-Clipboard
     Write-Host "Target: $TargetRx"
     [System.Windows.Forms.SendKeys]::SendWait("%{x}")
-    Start-sleep -Milliseconds 1500
+    Start-sleep -Milliseconds 2000
     & $Clavier /sendkeys "[{Focus,0,Review*}][{MouseMoveToFocus,50,550}][{MouseButton,L}][][TAB][][ENTER]"
-    Start-sleep -Milliseconds 200
+    Start-sleep -Milliseconds 300
     [System.Windows.Forms.SendKeys]::SendWait("%{7 2}")
     Start-sleep -Milliseconds 800
     [System.Windows.Forms.SendKeys]::SendWait("%{d}")
@@ -476,25 +476,15 @@ if ($result -eq 1) {
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,180,570}][{MouseButton,L}][]"
         Start-sleep -Milliseconds 200
         [System.Windows.Forms.SendKeys]::SendWait("%{s}")
-        Start-sleep -Milliseconds 2000
-        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Address"))) {
-        [Microsoft.VisualBasic.Interaction]::AppActivate("Address")
-        [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
-        } else { continue }
-        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Multiple"))) {
-        [Microsoft.VisualBasic.Interaction]::AppActivate("Multiple")
-        [System.Windows.Forms.SendKeys]::SendWait("%{F4}")
         Start-sleep -Milliseconds 100
-        [System.Windows.Forms.SendKeys]::SendWait("%{y}")
-        } else { continue }
-        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Review"))) {
-        [Microsoft.VisualBasic.Interaction]::AppActivate("Review")
-        [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
-        [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
-        [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
-        [System.Windows.Forms.SendKeys]::SendWait("~")
-        } else { continue }
+        & $Clavier /sendkeys "[{Focus,0,Address*}][][ENTER]"
+        Start-sleep -Milliseconds 2000
+        & $Clavier /sendkeys "[{Focus,0,Address*}][][Alt+F4]"
+        Start-sleep -Milliseconds 100
+        & $Clavier /sendkeys "[{Focus,0,Multiple*}][][Alt+F4][][Alt+y]"
         Start-sleep -Milliseconds 200
+        & $Clavier /sendkeys "[{Focus,0,Review*}][{MouseMoveToFocus,50,550}][{MouseButton,L}][][TAB][][ENTER]"
+        Start-sleep -Milliseconds 300
 
         $PixelRefillSuccess = 0
         Do {
