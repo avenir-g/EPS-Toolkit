@@ -4,9 +4,9 @@
     "Name": "Out of Stock",
     "Info": "Auto-rejects out-of-stock items during Fill. [Next shipping day at 12 PM] [Use on Fill screen]",
     "Shortcut": "F1",
-    "Code": "",
-    "Window": "",
-    "Programs": ""
+    "Code": "112",
+    "Window": "Minimized",
+    "Programs": "java.exe"
 }
 #>
 
@@ -64,3 +64,4 @@ if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Fill"))) {
 
 
 } else { exit }
+
