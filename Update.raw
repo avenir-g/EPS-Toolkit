@@ -1,4 +1,4 @@
-﻿<#
+<#
 {
     "Category": 3,
     "Name": "Update",
@@ -75,6 +75,7 @@ function Update-Progress {
 # ---------------------------
 # Base paths and repo info
 # ---------------------------
+$targetDir = $PSScriptRoot
 $patFile = "$targetDir\Assets\bin\pat.key"
 if (-not (Test-Path -Path $patFile)) {
     if ($background) {
@@ -93,7 +94,6 @@ if (-not (Test-Path -Path $patFile)) {
 }
 
 $personalAccessToken = [System.IO.File]::ReadAllText($patFile).Trim()
-$targetDir = $PSScriptRoot
 $repoOwner = "avenir-g"
 $repoName  = "EPS-Toolkit"
 $repoUrl   = "https://github.com/$repoOwner/$repoName"
