@@ -2,8 +2,11 @@
 {
     "Category": 2,
     "Name": "Refill Denial",
-    "Shortcut": "Shift + F5",
-    "Info": "Auto-documents in patient profile, removes denied refill requests, and disables auto refills. [Start on Open Call Queue. Call Type: Patient]"
+    "Info": "Auto-documents in patient profile, removes denied refill requests, and disables auto refills. [Start on Open Call Queue. Call Type: Patient]",
+	"Shortcut": "Shift + F5",
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -519,3 +522,4 @@ if ($result -eq 0) {
 } else {
     Write-Host 'Canceled'
 }
+
