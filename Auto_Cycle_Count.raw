@@ -2,8 +2,11 @@
 {
     "Category": 3,
     "Name": "Cycle Count",
-    "Shortcut": "Shift + F7",
-    "Info": "Automatically processes and removes cycle counts. [Start on Cycle Count screen]"
+    "Info": "Automatically processes and removes cycle counts. [Start on Cycle Count screen]",
+	"Shortcut": "Shift + F7",
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -334,3 +337,4 @@ Do {
 } else {
     Write-Host 'Canceled'
 }
+
