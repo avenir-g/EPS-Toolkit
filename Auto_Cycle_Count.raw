@@ -4,9 +4,9 @@
     "Name": "Cycle Count",
     "Info": "Automatically processes and removes cycle counts. [Start on Cycle Count screen]",
 	"Shortcut": "Shift + F7",
-    "Code": "",
-    "Window": "",
-    "Programs": ""
+    "Code": "1142",
+    "Window": "Minimized",
+    "Programs": "java.exe"
 }
 #>
 
@@ -337,4 +337,5 @@ Do {
 } else {
     Write-Host 'Canceled'
 }
+
 
