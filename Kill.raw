@@ -1,1 +1,13 @@
+<# 
+{
+    "Category": 4,
+    "Name": "Kill Switch",
+    "Info": "Ends all running PowerShell scripts.",
+    "Shortcut": "Esc",
+    "Code": "",
+    "Window": "",
+    "Programs": ""
+}
+#>
+
 Stop-Process -Name "powershell"
