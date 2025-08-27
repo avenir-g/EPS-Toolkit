@@ -4,9 +4,9 @@
     "Name": "Transfers",
     "Info": "Automatically process and print transfer requests when data is ready. [Begin on Transfer Screen]",
     "Shortcut": "Shift + F8",
-    "Code": "",
-    "Window": "",
-    "Programs": ""
+    "Code": "1143",
+    "Window": "Normal",
+    "Programs": "java.exe"
 }
 #>
 
@@ -169,4 +169,5 @@ if ($PixelSuccess -eq 1) {
 }
 
 exit
+
 
