@@ -2,8 +2,11 @@
 {
     "Category": 3,
     "Name": "Setup",
+    "Info": "Configure the file directory paths for Shortcuts, Clavier+, and Cap2Text.",
     "Shortcut": "N/A",
-    "Info": "Configure the file directory paths for Shortcuts, Clavier+, and Cap2Text."
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -128,4 +131,5 @@ Cap2Txt=$($Cap2TxtValue.Text)
 Printer=$($PrinterValue.Text)
 "@
     Set-Content -Path $iniFilePath -Value $iniContent
+
 }
