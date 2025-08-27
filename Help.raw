@@ -38,8 +38,11 @@ function Get-CodeHeaders {
             $headers += [PSCustomObject]@{
                 CategoryNumber = [int]$header.Category
                 Name = $header.Name
-                Shortcut = $header.Shortcut
                 Info = $header.Info
+                Shortcut = $header.Shortcut
+                Code = $header.Code
+                Window = $header.Window
+                Programs = $header.Programs
                 FilePath = $FilePath
             }
         } catch {
@@ -425,3 +428,4 @@ $window2.Show()
 $dispatcher = [System.Windows.Threading.Dispatcher]::CurrentDispatcher
 $dispatcherFrame = New-Object System.Windows.Threading.DispatcherFrame
 [System.Windows.Threading.Dispatcher]::PushFrame($dispatcherFrame)
+
