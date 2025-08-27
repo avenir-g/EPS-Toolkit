@@ -2,8 +2,11 @@
 {
     "Category": 2,
     "Name": "Transfers",
+    "Info": "Automatically process and print transfer requests when data is ready. [Begin on Transfer Screen]",
     "Shortcut": "Shift + F8",
-    "Info": "Automatically process and print transfer requests when data is ready. [Begin on Transfer Screen]"
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -166,3 +169,4 @@ if ($PixelSuccess -eq 1) {
 }
 
 exit
+
