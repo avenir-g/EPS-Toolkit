@@ -2,8 +2,11 @@
 {
     "Category": 3,
     "Name": "CII Print",
+    "Info": "Generates and prints a report of on-hand CII in the Fill Queue. [Start on Fill Queue screen]",
     "Shortcut": "F3",
-    "Info": "Generates and prints a report of on-hand CII in the Fill Queue. [Start on Fill Queue screen]"
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -229,3 +232,4 @@ $form.Controls.Add($buttonPanel)
 
 # Show the form
 $form.ShowDialog()
+
