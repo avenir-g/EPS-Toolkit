@@ -2,8 +2,11 @@
 {
     "Category": 2,
     "Name": "Auto Delete",
+    "Info": "Auto-deletes call requests, denials, and TP exceptions older than 1 month from the Open Call Queue. [Start on Open Call Queue screen]",
     "Shortcut": "Shift + Delete",
-    "Info": "Auto-deletes call requests, denials, and TP exceptions older than 1 month from the Open Call Queue. [Start on Open Call Queue screen]"
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -565,3 +568,4 @@ if ($result10 -eq [System.Windows.Forms.DialogResult]::OK) {
 else { 
     Write-Host 'Canceled'
 }
+
