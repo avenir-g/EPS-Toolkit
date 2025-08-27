@@ -2,8 +2,11 @@
 {
     "Category": 1,
     "Name": "Auto Text Toolkit",
+    "Info": "Generates pre-programmed text for quicker data entry.",
     "Shortcut": "Shift + F4",
-    "Info": "Generates pre-programmed text for quicker data entry."
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -245,4 +248,5 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK)
     }
 } else {
     Write-Host 'Canceled'
+
 }
