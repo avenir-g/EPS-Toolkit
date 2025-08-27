@@ -2,8 +2,11 @@
 {
     "Category": 4,
     "Name": "Auto Counsel",
+    "Info": "Auto-prepare counseling for scanned prescriptions at Will Call. [Start on Will Call screen after scanning Rxs]",
     "Shortcut": "F2",
-    "Info": "Auto-prepare counseling for scanned prescriptions at Will Call. [Start on Will Call screen after scanning Rxs]"
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -246,3 +249,4 @@ if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise Pharmacy 
     (New-Object Media.SoundPlayer $Audio).PlaySync()
 }
 else { continue }
+
