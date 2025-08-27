@@ -2,8 +2,11 @@
 {
     "Category": 2,
     "Name": "Admin Counsel Queue",
+    "Info": "Auto-clears the counsel queue, removing entries from the past month. [Pharmacist credentials required] [Start on Home screen]",
     "Shortcut": "Shift + F2",
-    "Info": "Auto-clears the counsel queue, removing entries from the past month. [Pharmacist credentials required] [Start on Home screen]"
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -402,3 +405,4 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
 else {
     Write-Host 'Canceled'
 }
+
