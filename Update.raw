@@ -1,0 +1,440 @@
+﻿<#
+{
+    "Category": 3,
+    "Name": "Update",
+    "Info": "Check for updates and download files from the Github EPS-Toolkit repository.",
+    "Shortcut": "N/A",
+    "Code": "",
+    "Window": "",
+    "Programs": ""
+}
+#>
+
+param (
+    [switch]$background
+)
+
+# ---------------------------
+# Console hide at start
+# ---------------------------
+$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+add-type -name win -member $dllvar -namespace native
+[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess().MainWindowHandle), 0)
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Add Windows Forms assembly
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# Enable visual styles for the message box
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+# Create the form
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Update Progress"
+$form.Size = New-Object System.Drawing.Size(400, 150)
+$form.StartPosition = "CenterScreen"
+$form.TopMost = $true
+
+# Create the progress bar
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Minimum = 0
+$progressBar.Maximum = 100
+$progressBar.Step = 1
+$progressBar.Width = 350
+$progressBar.Height = 30
+$progressBar.Location = New-Object System.Drawing.Point(20, 20)
+$form.Controls.Add($progressBar)
+
+# Create a label to show the status
+$statusLabel = New-Object System.Windows.Forms.Label
+$statusLabel.AutoSize = $true
+$statusLabel.Location = New-Object System.Drawing.Point(20, 60)
+$form.Controls.Add($statusLabel)
+
+# Show the form
+if (-not $background) {
+    $form.Show()
+}
+
+# Function to update the progress bar and status label
+function Update-Progress {
+    param (
+        [int]$percentComplete,
+        [string]$statusMessage
+    )
+    $progressBar.Value = $percentComplete
+    $statusLabel.Text = $statusMessage
+    $form.Refresh()
+    Write-Host $statusMessage
+}
+
+# ---------------------------
+# Base paths and repo info
+# ---------------------------
+$patFile = "$targetDir\Assets\bin\pat.key"
+if (-not (Test-Path -Path $patFile)) {
+    if ($background) {
+        exit
+    } else {
+        Write-Host "ERROR: Personal Access Token file not found at $patFile" -ForegroundColor Red
+        # Optionally show message on your form:
+        if ($form) {
+            $statusLabel.ForeColor = [System.Drawing.Color]::Red
+            $statusLabel.Text = "ERROR: PAT not found! Please Reinstall!"
+            $form.Refresh()
+            Start-Sleep -Seconds 3
+        }
+        exit
+    }
+}
+
+$personalAccessToken = [System.IO.File]::ReadAllText($patFile).Trim()
+$targetDir = $PSScriptRoot
+$repoOwner = "avenir-g"
+$repoName  = "EPS-Toolkit"
+$repoUrl   = "https://github.com/$repoOwner/$repoName"
+$commitHashesFile = Join-Path -Path $targetDir -ChildPath 'commit_hashes.json'
+
+# Function to get the latest commit hash for a file
+function Get-LatestCommitHash {
+    param (
+        [string]$filePath
+    )
+    $apiUrl = "https://api.github.com/repos/$repoOwner/$repoName/commits?path=$filePath"
+    $headers = @{
+        'Authorization' = "token $personalAccessToken"
+        'User-Agent'    = 'PowerShell'
+    }
+    $response = Invoke-RestMethod -Uri $apiUrl -Headers $headers
+    return $response[0].sha
+}
+
+# Function to get all .raw files from the repository
+function Get-RawFiles {
+    $apiUrl = "https://api.github.com/repos/$repoOwner/$repoName/contents"
+    $headers = @{
+        'Authorization' = "token $personalAccessToken"
+        'User-Agent'    = 'PowerShell'
+    }
+    $response = Invoke-RestMethod -Uri $apiUrl -Headers $headers
+    return $response | Where-Object { $_.name -like "*.raw" }
+}
+
+# Function to download a file from the repository
+function Download-File {
+    param (
+        [string]$filePath,
+        [string]$destinationPath
+    )
+    $apiUrl = "https://raw.githubusercontent.com/$repoOwner/$repoName/main/$filePath"
+    try {
+        Invoke-WebRequest -Uri $apiUrl -OutFile $destinationPath -ErrorAction Stop
+        # Ensure UTF-8 encoding
+        $content = Get-Content -Path $destinationPath -Raw -Encoding UTF8
+        Set-Content -Path $destinationPath -Value $content -Encoding UTF8
+    } catch {
+        Update-Progress -percentComplete 0 -statusMessage "Error downloading $filePath\: $_"
+    }
+}
+
+# Check if the target directory exists
+if (-not (Test-Path -Path $targetDir)) {
+    Update-Progress -percentComplete 0 -statusMessage "Error: Target directory $targetDir does not exist."
+    exit
+}
+
+# Close any running programs/scripts
+$processes = Get-Process | Where-Object { $_.Name -match "Clavier|Capture2Text" }
+foreach ($process in $processes) {
+    Stop-Process -Id $process.Id -Force
+    Update-Progress -percentComplete 5 -statusMessage "Closed process: $($process.Name)"
+}
+
+# Define paths for start menu folders
+$startMenuFolder = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+
+# Ensure folders exist
+foreach ($folder in @($startMenuFolder)) {
+    if (-not (Test-Path $folder)) {
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    }
+}
+
+# Check for any instances of Clavier or Clavier+ in the Start Menu and remove them
+$clavierStartMenuShortcuts = Get-ChildItem -Path $startMenuFolder -Filter "*.lnk" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match "Clavier(\+)?\.lnk$" }
+
+foreach ($shortcut in $clavierStartMenuShortcuts) {
+    Remove-Item -Path $shortcut.FullName -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path -Path $shortcut.FullName)) {
+        Write-Host "Successfully removed Clavier Start Menu shortcut: $($shortcut.Name)" -ForegroundColor Green
+    } else {
+        Write-Host "Failed to remove Clavier Start Menu shortcut: $($shortcut.Name)" -ForegroundColor Red
+    }
+}
+
+# Load existing commit hashes
+if (Test-Path -Path $commitHashesFile) {
+    $commitHashes = Get-Content -Path $commitHashesFile | ConvertFrom-Json
+} else {
+    $commitHashes = @{}
+}
+
+# Get the list of .raw files from the repository
+$scripts = Get-RawFiles
+
+# Temporary dictionary to store updated commit hashes
+$updatedCommitHashes = @{}
+
+# Array to store the names of files that need to be updated
+$filesToUpdate = @()
+
+# Check for updates and compare commit hashes
+foreach ($script in $scripts) {
+    $scriptName = $script.name
+    $latestHash = Get-LatestCommitHash -filePath $scriptName
+    $oldHash = if ($commitHashes.PSObject.Properties[$scriptName]) { $commitHashes.PSObject.Properties[$scriptName].Value } else { $null }
+    if ($oldHash -ne $latestHash) {
+        # Add the script name to the array of files to update
+        $filesToUpdate += $scriptName
+        # Update the commit hash in the temporary dictionary
+        $updatedCommitHashes[$scriptName] = $latestHash
+    } else {
+        # Keep the old hash if no update is needed
+        $updatedCommitHashes[$scriptName] = $oldHash
+    }
+}
+
+# Check if there are any files to update
+if ($filesToUpdate.Count -eq 1) {
+    Update-Progress -percentComplete 10 -statusMessage "Update available for $($filesToUpdate.Count) File..."
+} elseif ($filesToUpdate.Count -gt 1) {
+    Update-Progress -percentComplete 10 -statusMessage "Update available for $($filesToUpdate.Count) Files..."
+}
+
+# Download updated files
+$totalFiles = $filesToUpdate.Count
+$currentFile = 0
+foreach ($scriptName in $filesToUpdate) {
+    $currentFile++
+    $percentComplete = [math]::Round(($currentFile / $totalFiles) * 100)
+    Update-Progress -percentComplete $percentComplete -statusMessage "Downloading $scriptName ($currentFile of $totalFiles)"
+    
+    # Download the updated file
+    $scriptPath = Join-Path -Path $targetDir -ChildPath $scriptName
+    Download-File -filePath $scriptName -destinationPath $scriptPath
+    
+    # Convert .raw to .ps1 with UTF-8 encoding
+    $ps1Path = [System.IO.Path]::ChangeExtension($scriptPath, ".ps1")
+    if (Test-Path -Path $ps1Path) {
+        Remove-Item -Path $ps1Path -Force
+    }
+    try {
+        $content = Get-Content -Path $scriptPath -Raw -Encoding UTF8
+        Set-Content -Path $ps1Path -Value $content -Encoding UTF8
+        Remove-Item -Path $scriptPath -Force
+    } catch {
+        Update-Progress -percentComplete 0 -statusMessage "Error processing $scriptPath\: $_"
+    }
+}
+
+# Save the updated commit hashes to the file
+$updatedCommitHashes | ConvertTo-Json | Set-Content -Path $commitHashesFile -Force
+
+# ---------------------------
+# Copy Capture2Text.ini to AppData
+# ---------------------------
+$sourceIniPath = Join-Path -Path $targetDir -ChildPath "assets\bin\Capture2Text.ini"
+$destinationFolder = Join-Path -Path $env:APPDATA -ChildPath "Capture2Text"
+$destinationIniPath = Join-Path -Path $destinationFolder -ChildPath "Capture2Text.ini"
+
+# Check if the destination folder exists, if not, create it
+if (-not (Test-Path -Path $destinationFolder)) {
+    New-Item -ItemType Directory -Path $destinationFolder -Force
+    Update-Progress -percentComplete 20 -statusMessage "Created destination folder: $destinationFolder"
+}
+
+# Copy the Capture2Text.ini file to the destination folder, replacing any existing file
+Update-Progress -percentComplete 30 -statusMessage "Copying Capture2Text.ini to: $destinationIniPath"
+Copy-Item -Path $sourceIniPath -Destination $destinationIniPath -Force
+
+# ---------------------------
+# Create Start Menu shortcut
+# ---------------------------
+Update-Progress -PercentComplete 70 -Status "Creating Clavier shortcut in Start Menu..."
+$WScriptShell = New-Object -ComObject WScript.Shell
+$shortcutPath = Join-Path $startMenuFolder "Clavier.lnk"
+$shortcut = $WScriptShell.CreateShortcut($shortcutPath)
+$clavierExePath = Join-Path -Path $targetDir -ChildPath "assets\bin\Clavier.exe"
+$shortcut.TargetPath = $clavierExePath
+$shortcut.WorkingDirectory = $targetDir
+$shortcut.IconLocation = $clavierExePath
+$shortcut.Save()
+Update-Progress -PercentComplete 80 -Status "Clavier shortcut created in Start Menu."
+
+# ---------------------------
+# Create Auto Start Task for Clavier
+# ---------------------------
+# Define task name and path
+$taskPath = "\Toolkit\"
+$taskName = "Launch Clavier"
+$fullTaskName = "$taskPath$taskName"
+
+# Check if the task already exists
+if (Get-ScheduledTask -TaskName $taskName -TaskPath $taskPath -ErrorAction SilentlyContinue) {
+    Write-Host "Task '$fullTaskName' already exists. Deleting it..."
+    Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false
+    Start-Sleep -Seconds 1
+}
+
+Update-Progress -PercentComplete 85 -Status "Creating new task..."
+
+# Replace hardcoded user info with current user's info
+$userDomain = $env:USERDOMAIN
+$userName = $env:USERNAME
+$fullUser = "$userDomain\$userName"
+
+# Define the embedded XML content
+$taskXml = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <SecurityDescriptor>D:(A;;FA;;;WD)</SecurityDescriptor>
+    <Author>$fullUser</Author>
+    <URI>\Toolkit\Launch Clavier</URI>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Principal1">
+      <UserId>$userName</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <Priority>4</Priority>
+    <IdleSettings>
+      <Duration>PT10M</Duration>
+      <WaitTimeout>PT1H</WaitTimeout>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+  </Settings>
+  <Triggers>
+    <LogonTrigger id="Trigger1">
+      <Delay>PT3S</Delay>
+      <UserId>$fullUser</UserId>
+    </LogonTrigger>
+  </Triggers>
+  <Actions Context="Principal1">
+    <Exec>
+      <Command>$clavierExePath</Command>
+    </Exec>
+  </Actions>
+</Task>
+"@
+
+# Register the task
+Register-ScheduledTask -Xml $taskXml -TaskName $taskName -TaskPath $taskPath -User $userName
+Update-Progress -percentComplete 90 -statusMessage "Registered Task: Auto Start Clavier."
+
+# ---------------------------
+# Attempt to pin Toolkit folder to Quick Access
+# ---------------------------
+try {
+    $shell = New-Object -ComObject Shell.Application
+    $parentFolder = Split-Path -Path $targetDir
+    $leaf = Split-Path -Path $targetDir -Leaf
+    $folder = $shell.Namespace($parentFolder)
+    if ($folder -ne $null) {
+        $item = $folder.ParseName($leaf)
+        if ($item -ne $null) {
+            foreach ($verb in $item.Verbs()) {
+                $name = $verb.Name.Replace('&','') -replace '\s+',' '
+                if ($name -match 'Pin to Quick access|Pin to Quick Access|Pin to Quick') {
+                    try {
+                        $verb.DoIt()
+                        Write-Host "Pinned Toolkit to Quick Access." -ForegroundColor Green
+                        Update-Progress -percentComplete 95 -statusMessage "Pinned Toolkit to Quick Access."
+                    } catch {
+                        # ignore failures silently
+                        Write-Host "Could not pin to Quick Access (best-effort)." -ForegroundColor Yellow
+                    }
+                    break
+                }
+            }
+        }
+    }
+} catch {
+    Write-Host "Pin to Quick Access attempt failed (unsupported on this OS)." -ForegroundColor Yellow
+}
+
+# ---------------------------
+# Remove previous .ps1 file associations
+# ---------------------------
+Write-Host "Deleting previous .ps1 associations..." -ForegroundColor Cyan
+Remove-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.ps1" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "Registry::HKEY_CURRENT_USER\Software\Classes\.ps1" -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "Previous .ps1 associations deleted." -ForegroundColor Green
+
+# Create the registry key for .ps1 files under HKCU
+Write-Host "Establishing .ps1 registry key..." -ForegroundColor Cyan
+New-Item -Path "Registry::HKEY_CURRENT_USER\Software\Classes\.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
+Write-Host ".ps1 registry key established." -ForegroundColor Green
+
+# Set the default value for the .ps1 key to 'Microsoft.PowerShellScript.1'
+Write-Host "Setting default value for .ps1 key..." -ForegroundColor Cyan
+Set-ItemProperty -Path "Registry::HKEY_CURRENT_USER\Software\Classes\.ps1" -Name "(Default)" -Value "Microsoft.PowerShellScript.1" -ErrorAction SilentlyContinue
+Write-Host "Default value set for .ps1 key." -ForegroundColor Green
+
+# Ensure the Microsoft.PowerShellScript.1 association exists
+Write-Host "Ensuring 'Microsoft.PowerShellScript.1' registry key exists..." -ForegroundColor Cyan
+New-Item -Path "Registry::HKEY_CURRENT_USER\Software\Classes\Microsoft.PowerShellScript.1" -Force -ErrorAction SilentlyContinue | Out-Null
+Write-Host "'Microsoft.PowerShellScript.1' registry key ensured." -ForegroundColor Green
+
+# Set the default value for the 'Microsoft.PowerShellScript.1' key to specify PowerShell execution
+Write-Host "Setting default value for 'Microsoft.PowerShellScript.1' key..." -ForegroundColor Cyan
+Set-ItemProperty -Path "Registry::HKEY_CURRENT_USER\Software\Classes\Microsoft.PowerShellScript.1" -Name "(Default)" -Value "Windows PowerShell Script" -ErrorAction SilentlyContinue
+Write-Host "Default value set for 'Microsoft.PowerShellScript.1' key." -ForegroundColor Green
+
+# Set the command to execute .ps1 files with PowerShell
+Write-Host "Setting command to execute .ps1 files with PowerShell..." -ForegroundColor Cyan
+New-Item -Path "Registry::HKEY_CURRENT_USER\Software\Classes\Microsoft.PowerShellScript.1\shell\open\command" -Force -ErrorAction SilentlyContinue | Out-Null
+Set-ItemProperty -Path "Registry::HKEY_CURRENT_USER\Software\Classes\Microsoft.PowerShellScript.1\shell\open\command" -Name "(Default)" -Value "`"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`" -File `"%1`"" -ErrorAction SilentlyContinue
+Write-Host "Command set to execute .ps1 files with PowerShell." -ForegroundColor Green
+
+# ---------------------------
+# Launch Clavier
+# ---------------------------
+Update-Progress -percentComplete 98 -statusMessage "Starting Clavier..."
+Start-Process -FilePath $clavierExePath -WindowStyle Minimized
+Update-Progress -percentComplete 100 -statusMessage "Clavier started!"
+
+# Close the form after a delay
+if (-not $background) {
+    $form.Close()
+}
+
+# ---------------------------
+# Display Message only if the -background parameter is not set
+# ---------------------------
+if (-not $background) {
+    # Check if there are any files to update
+    if ($filesToUpdate.Count -eq 1) {
+        Update-Progress -percentComplete 100 -statusMessage "Done! Updated $($filesToUpdate.Count) File!"
+        . ./successHandler.ps1 "Done! Updated $($filesToUpdate.Count) File!"
+    } elseif ($filesToUpdate.Count -gt 1) {
+        Update-Progress -percentComplete 100 -statusMessage "Done! Updated $($filesToUpdate.Count) Files!"
+        . ./successHandler.ps1 "Done! Updated $($filesToUpdate.Count) Files!"
+    } else {
+        Update-Progress -percentComplete 100 -statusMessage "No updates found!"
+        . ./successHandler.ps1 "No updates found!"
+    }
+}
