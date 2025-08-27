@@ -2,8 +2,11 @@
 {
     "Category": 2,
     "Name": "Refill Request",
+    "Info": "Auto-prints recent failed prescriber refill requests or a set number of old requests, then reschedules for 10 days. [Start on Open Call Queue]",
     "Shortcut": "Shift + F6",
-    "Info": "Auto-prints recent failed prescriber refill requests or a set number of old requests, then reschedules for 10 days. [Start on Open Call Queue]"
+    "Code": "",
+    "Window": "",
+    "Programs": ""
 }
 #>
 
@@ -582,3 +585,4 @@ if ($result -eq $true) {
     . ./successHandler.ps1 "All Done!`nPrinted $CounterDone call(s)!"
 } else {
 }
+
