@@ -4,8 +4,8 @@
     "Name": "CII Print",
     "Info": "Generates and prints a report of on-hand CII in the Fill Queue. [Start on Fill Queue screen]",
     "Shortcut": "F3",
-    "Code": "",
-    "Window": "",
+    "Code": "114",
+    "Window": "Minimized",
     "Programs": ""
 }
 #>
@@ -232,4 +232,5 @@ $form.Controls.Add($buttonPanel)
 
 # Show the form
 $form.ShowDialog()
+
 
