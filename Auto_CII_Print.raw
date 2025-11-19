@@ -10,10 +10,6 @@
 }
 #>
 
-$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
-add-type -name win -member $dllvar -namespace native
-[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
-
 # Set the working directory to the script's location
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 Set-Location -Path $scriptDir
@@ -95,12 +91,17 @@ Do {
 Start-sleep -Milliseconds 200
 
 #FILTER
-& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,80,250}][{MouseButton,L}][][{MouseMoveToFocus,80,270}][{MouseButton,L}][][Ctrl + C]"
-Start-sleep -Milliseconds 800
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,80,250}][{MouseButton,L}][][{MouseMoveToFocus,80,270}][{MouseButton,L}]"
+Start-sleep -Milliseconds 400
+[System.Windows.Forms.SendKeys]::SendWait("^c")
+Start-sleep -Milliseconds 100
+
 $RxCheck = (Get-Clipboard).Split("`t")[0]
 if ($RxCheck.StartsWith("2") -eq $false) {
-    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,80,250}][{MouseButton,L}][][{MouseMoveToFocus,80,270}][{MouseButton,L}][][Ctrl + C]"
-    Start-sleep -Milliseconds 800
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,80,250}][{MouseButton,L}][][{MouseMoveToFocus,80,270}][{MouseButton,L}]"
+    Start-sleep -Milliseconds 400
+    [System.Windows.Forms.SendKeys]::SendWait("^c")
+    Start-sleep -Milliseconds 100
 }
 
 #GET LIST
@@ -110,8 +111,10 @@ Start-sleep -Milliseconds 100
 Do {
     Set-Clipboard " "
     Start-sleep -Milliseconds 15
-    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][][Ctrl + C]"
-    Start-sleep -Milliseconds 185
+    & $Clavier /sendkeys "[{Focus,0,*EPS/*}]"
+    Start-sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait("^c")
+    Start-sleep -Milliseconds 100
     $Rx = (Get-Clipboard).Split("`t")[0]
     $Drug = (Get-Clipboard).Split("`t")[8]
     $Fill = (Get-Clipboard).Split("`t")[9]
@@ -215,11 +218,7 @@ $printButton.Text = "Print Again"
 $printButton.Dock = [System.Windows.Forms.DockStyle]::Right
 $printButton.Width = 100
 $printButton.Add_Click({
-    if ($inStock.Count -eq 0) {
-        . .\errorHandler.ps1 "No CII's found in stock!`nNothing to print!"
-    } else {
-        $dataString | Out-Printer -Name $Printer
-    }
+    $dataString | Out-Printer -Name $Printer
 })
 
 # Add buttons to the panel
@@ -232,6 +231,3 @@ $form.Controls.Add($buttonPanel)
 
 # Show the form
 $form.ShowDialog()
-
-
-
