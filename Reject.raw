@@ -47,21 +47,148 @@ add-type -AssemblyName System.Windows.Forms
 [Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise")
 [System.Windows.Forms.SendKeys]::SendWait("%{j}")
 start-sleep -Milliseconds 450
+
 if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Fill"))) {
+
     & $Clavier /sendkeys "[{Focus,0,Fill *}][Enter][Tab]"
-    $DOW = (Get-Date).DayOfWeek
-    if ($DOW -eq "Friday") {
-        $Date = (Get-date).AddDays(3).ToString('MM-dd-yyyy')
+
+    # -------------------------
+    # Holiday and scheduling logic (year-agnostic, includes observed dates)
+    # Holidays included:
+    # - New Year's Day (Jan 1) - observed
+    # - Presidents Day (third Monday in Feb)
+    # - Memorial Day (last Monday in May)
+    # - Independence Day (July 4) - observed
+    # - Labor Day (first Monday in Sep)
+    # - Thanksgiving (fourth Thursday in Nov)
+    # - Christmas Day (Dec 25) - observed
+    # -------------------------
+
+    function Get-NthWeekdayOfMonth {
+        param(
+            [int]$Year,
+            [int]$Month,
+            [System.DayOfWeek]$Weekday,
+            [int]$N
+        )
+        $firstOfMonth = Get-Date -Year $Year -Month $Month -Day 1
+        $offset = ([int]$Weekday - [int]$firstOfMonth.DayOfWeek + 7) % 7
+        return $firstOfMonth.AddDays($offset + 7*($N-1)).Date
     }
-    elseif ($DOW -eq "Saturday") {
-        $Date = (Get-date).AddDays(2).ToString('MM-dd-yyyy')
+
+    function Get-LastWeekdayOfMonth {
+        param(
+            [int]$Year,
+            [int]$Month,
+            [System.DayOfWeek]$Weekday
+        )
+        $lastOfMonth = (Get-Date -Year $Year -Month $Month -Day 1).AddMonths(1).AddDays(-1)
+        $offset = ([int]$lastOfMonth.DayOfWeek - [int]$Weekday + 7) % 7
+        return $lastOfMonth.AddDays(-$offset).Date
     }
-    else {
-    $Date = (Get-date).AddDays(1).ToString('MM-dd-yyyy')
+
+    function Get-ObservedDate {
+        param([datetime]$DateToObserve)
+        switch ($DateToObserve.DayOfWeek) {
+            'Saturday' { return $DateToObserve.AddDays(-1).Date }  # observed Friday
+            'Sunday'   { return $DateToObserve.AddDays(1).Date }   # observed Monday
+            default    { return $DateToObserve.Date }
+        }
     }
-    $CompileString = "[{Focus,0,Fill *}]" + $Date + "[{Wait, 30}][TAB][{Wait, 30}][TAB][{Wait, 30}]12P[{MouseMoveToFocus,100,410}][{MouseButton,L}][{Wait, 30}][t][TAB][{Wait, 10}][ALT+o]"
+
+    function Get-HolidaysForYear {
+        param([int]$Year)
+        $holidays = @()
+
+        # New Year's Day (Jan 1) - actual and observed
+        $ny = Get-Date -Year $Year -Month 1 -Day 1
+        $holidays += $ny.Date
+        $holidays += Get-ObservedDate -DateToObserve $ny
+
+        # Presidents Day (third Monday in February)
+        $presidents = Get-NthWeekdayOfMonth -Year $Year -Month 2 -Weekday ([DayOfWeek]::Monday) -N 3
+        $holidays += $presidents
+
+        # Memorial Day (last Monday in May)
+        $memorial = Get-LastWeekdayOfMonth -Year $Year -Month 5 -Weekday ([DayOfWeek]::Monday)
+        $holidays += $memorial
+
+        # Independence Day (July 4) - actual and observed
+        $july4 = Get-Date -Year $Year -Month 7 -Day 4
+        $holidays += $july4.Date
+        $holidays += Get-ObservedDate -DateToObserve $july4
+
+        # Labor Day (first Monday in September)
+        $labor = Get-NthWeekdayOfMonth -Year $Year -Month 9 -Weekday ([DayOfWeek]::Monday) -N 1
+        $holidays += $labor
+
+        # Thanksgiving (fourth Thursday in November)
+        $thanksgiving = Get-NthWeekdayOfMonth -Year $Year -Month 11 -Weekday ([DayOfWeek]::Thursday) -N 4
+        $holidays += $thanksgiving
+
+        # Christmas (Dec 25) - actual and observed
+        $xmas = Get-Date -Year $Year -Month 12 -Day 25
+        $holidays += $xmas.Date
+        $holidays += Get-ObservedDate -DateToObserve $xmas
+
+        # Return unique dates
+        return ($holidays | Sort-Object -Unique)
+    }
+
+    function Is-Holiday {
+        param([datetime]$CheckDate)
+        # Force integer year to avoid arithmetic errors
+        $yearInt = [int]$CheckDate.Year
+
+        # Compute adjacent years in separate variables to avoid ambiguous operator overloads
+        $prevYear = $yearInt - 1
+        $nextYear = $yearInt + 1
+        $yearsToCheck = @($prevYear, $yearInt, $nextYear)
+
+        foreach ($y in $yearsToCheck) {
+            $hols = Get-HolidaysForYear -Year $y
+            if ($hols -contains $CheckDate.Date) { return $true }
+        }
+        return $false
+    }
+
+    # Compute initial candidate date using existing weekend rule
+    $today = Get-Date
+    switch ($today.DayOfWeek) {
+        'Friday'  { $candidate = $today.AddDays(3) }  # Friday -> Monday
+        'Saturday'{ $candidate = $today.AddDays(2) }  # Saturday -> Monday
+        default   { $candidate = $today.AddDays(1) }  # otherwise -> tomorrow
+    }
+
+    # Advance candidate while it's a holiday or weekend
+    while ($true) {
+        # If candidate is a holiday (including observed), move to next calendar day and re-evaluate
+        if (Is-Holiday -CheckDate $candidate) {
+            $candidate = $candidate.AddDays(1)
+            continue
+        }
+
+        # If candidate falls on Saturday or Sunday, jump to Monday
+        if ($candidate.DayOfWeek -eq 'Saturday') {
+            $candidate = $candidate.AddDays(2)
+            continue
+        }
+        if ($candidate.DayOfWeek -eq 'Sunday') {
+            $candidate = $candidate.AddDays(1)
+            continue
+        }
+
+        # Candidate is not a holiday and not a weekend -> done
+        break
+    }
+
+    # Final date string used in your automation (avoid naming collision with Date type)
+    $DateStr = $candidate.ToString('MM-dd-yyyy')
+
+    # -------------------------
+    # Build and send the automation string
+    # -------------------------
+    $CompileString = "[{Focus,0,Fill *}]" + $DateStr + "[{Wait, 30}][TAB][{Wait, 30}][TAB][{Wait, 30}]12P[{MouseMoveToFocus,100,410}][{MouseButton,L}][{Wait, 30}][t][TAB][{Wait, 10}][ALT+o]"
     & $Clavier /sendkeys $CompileString
 
-
 } else { exit }
-
