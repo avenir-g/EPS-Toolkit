@@ -45,7 +45,6 @@ foreach ($var in $variables.GetEnumerator()) {
     }
 }
 
-
 # --------------------
 # FORM (WPF/XAML) + AUTH BUILDER — uniform 10px spacing via spacer rows
 # --------------------
