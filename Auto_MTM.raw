@@ -1,1 +1,377 @@
+<#
+{
+    "Category": 2,
+    "Name": "Auto MTM",
+    "Info": "Auto prints and clears MTM queue [Start on Home screen or MTM screen]",
+    "Shortcut": "F5",
+    "Code": "116",
+    "Window": "Minimized",
+    "Programs": "java.exe"
+}
+#>
 
+$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+add-type -name win -member $dllvar -namespace native
+[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
+
+# Set the working directory to the script's location
+$scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
+Set-Location -Path $scriptDir
+
+# Load variables from precheck.ps1
+. .\precheck.ps1
+
+# Check the exit code of the last command
+if ($LASTEXITCODE -ne 0) {
+    . .\errorHandler.ps1 $global:precheckError
+    exit 1
+}
+
+# List of variables to check
+$variables = @{
+    "Main" = $Main
+    "Clavier" = $Clavier
+    "Cap2Txt" = $Cap2Txt
+    "SendKeys" = $SendKeys
+    "Printer" = $Printer
+}
+
+# Check if all necessary variables are defined
+foreach ($var in $variables.GetEnumerator()) {
+    if (-not $var.Value) {
+        $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
+        . ./errorHandler.ps1 $errorMessage
+        exit 1
+    }
+}
+
+
+# --------------------
+# FORM (WPF/XAML) + AUTH BUILDER — uniform 10px spacing via spacer rows
+# --------------------
+Add-Type -AssemblyName PresentationFramework
+Add-type -AssemblyName Microsoft.VisualBasic
+
+# Font fallback
+try {
+    $fontName = "Segoe UI Variable"
+    $font = New-Object System.Windows.Media.FontFamily($fontName)
+    $null = $font.FamilyNames
+} catch { $fontName = "Segoe UI" }
+
+# XAML with 10px spacers between rows
+$xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Enterprise Pharmacy System"
+        Height="188" Width="335"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="#F5F5FA"
+        FontFamily="$fontName"
+        FontSize="14">
+
+    <Grid Margin="0">
+        <!-- Background watermark: 'M' -->
+        <TextBlock Text="M"
+                   FontSize="70"
+                   FontWeight="Bold"
+                   Opacity="1"
+                   Foreground="#ededed"
+                   VerticalAlignment="Bottom"
+                   HorizontalAlignment="Left"
+                   Margin="13,0,0,-1"
+                   IsHitTestVisible="False"
+                   Panel.ZIndex="0"/>
+
+        <!-- Main content grid -->
+        <Grid Margin="18,18,18,18" Panel.ZIndex="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Row 0: User -->
+                <RowDefinition Height="10"/>   <!-- Row 1: spacer -->
+                <RowDefinition Height="Auto"/> <!-- Row 2: Password -->
+                <RowDefinition Height="10"/>   <!-- Row 3: spacer -->
+                <RowDefinition Height="Auto"/> <!-- Row 4: Buttons -->
+                <RowDefinition Height="10"/>   <!-- Row 5: spacer -->
+                <RowDefinition Height="Auto"/> <!-- Row 6: Error -->
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="70"/>
+                <ColumnDefinition Width="210"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- User row -->
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="User" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <TextBox x:Name="UserBox" Grid.Row="0" Grid.Column="1"
+                     Width="210" Height="28" BorderThickness="2" Padding="1.5,3"/>
+
+            <!-- Password row -->
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Password" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <Grid Grid.Row="2" Grid.Column="1">
+                <Grid>
+                    <PasswordBox x:Name="PassBox"
+                                 Height="28"
+                                 Padding="1.5,1.5,28,1.5"
+                                 VerticalContentAlignment="Center"
+                                 BorderThickness="2"
+                                 Margin="0"/>
+                    <TextBox x:Name="PassText"
+                             Height="28"
+                             Padding="1.5,1.5,28,1.5"
+                             VerticalContentAlignment="Center"
+                             BorderThickness="2"
+                             Margin="0"
+                             Visibility="Collapsed"/>
+                    <Button x:Name="TogglePassBtn"
+                            Content="👁"
+                            Width="24"
+                            Height="24"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Margin="0,0,2,0"
+                            Background="Transparent"
+                            BorderBrush="{x:Null}"
+                            BorderThickness="0"
+                            ToolTip="Hold to reveal password"
+                            IsTabStop="False"
+                            Cursor="Hand"/>
+                </Grid>
+            </Grid>
+
+            <!-- Buttons -->
+            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="OkBtn"
+                        Content="Submit"
+                        Width="102"
+                        Height="36"
+                        FontWeight="Bold"
+                        IsEnabled="False"
+                        IsDefault="True">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter Property="Background" Value="#569de5"/>
+                            <Setter Property="BorderThickness" Value="2"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                CornerRadius="3">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#4d8dce"/>
+                                            </Trigger>
+                                            <Trigger Property="IsFocused" Value="True">
+                                                <Setter Property="Background" Value="#4d8dce"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="BorderBrush" Value="#aaa"/>
+                                                <Setter Property="Background" Value="#ddd"/>
+                                                <Setter Property="Foreground" Value="white"/>
+                                                <Setter Property="Cursor" Value="Arrow"/>
+                                                <Setter Property="BorderThickness" Value="0"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="True">
+                                                <Setter Property="BorderThickness" Value="0"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button x:Name="CancelBtn"
+                        Content="Cancel"
+                        Width="102"
+                        Height="36"
+                        FontWeight="Bold"
+                        BorderBrush="#888"
+                        Margin="6,0,0,0"
+                        HorizontalAlignment="Right">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#c84e38"/>
+                            <Setter Property="Foreground" Value="white"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#C23B22"/>
+                                            </Trigger>
+                                            <Trigger Property="IsFocused" Value="True">
+                                                <Setter Property="Background" Value="#C23B22"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+
+            <!-- Error block -->
+            <TextBlock x:Name="ErrorBlock"
+                       Grid.Row="6" Grid.ColumnSpan="2"
+                       Foreground="Red"
+                       Margin="0,0,0,0"
+                       FontSize="12"
+                       Visibility="Collapsed"/>
+        </Grid>
+    </Grid>
+</Window>
+"@
+
+# Parse + show window
+$reader    = New-Object System.IO.StringReader $xaml
+$xmlreader = [System.Xml.XmlTextReader]::new($reader)
+$window    = [Windows.Markup.XamlReader]::Load($xmlreader)
+
+# Controls
+$UserBox       = $window.FindName("UserBox")
+$PassBox       = $window.FindName("PassBox")
+$PassText      = $window.FindName("PassText")
+$TogglePassBtn = $window.FindName("TogglePassBtn")
+$OkBtn         = $window.FindName("OkBtn")
+$CancelBtn     = $window.FindName("CancelBtn")
+$ErrorBlock    = $window.FindName("ErrorBlock")
+
+# Validation: enable Submit when user + password present
+function Validate-Inputs {
+    if ($UserBox.Text -and $PassBox.Password) {
+        $OkBtn.IsEnabled = $true
+        $ErrorBlock.Visibility = "Collapsed"
+    } else {
+        $OkBtn.IsEnabled = $false
+    }
+}
+$UserBox.Add_TextChanged({ Validate-Inputs })
+$PassBox.Add_PasswordChanged({ Validate-Inputs })
+
+# Buttons
+$CancelBtn.Add_Click({ $window.DialogResult = $false; $window.Close() })
+$OkBtn.Add_Click({     $window.DialogResult = $true ; $window.Close() })
+
+# Password reveal (press-and-hold)
+$TogglePassBtn.Add_PreviewMouseLeftButtonDown({
+    $PassText.Text      = $PassBox.Password
+    $PassBox.Visibility = "Collapsed"
+    $PassText.Visibility= "Visible"
+})
+$TogglePassBtn.Add_PreviewMouseLeftButtonUp({
+    $PassBox.Password   = $PassText.Text
+    $PassBox.Visibility = "Visible"
+    $PassText.Visibility= "Collapsed"
+})
+
+# UX niceties
+$UserBox.Add_GotFocus({ $UserBox.Dispatcher.InvokeAsync({ $UserBox.SelectAll() }, "Background") })
+$PassBox.Add_GotFocus({ $PassBox.Dispatcher.InvokeAsync({ $PassBox.SelectAll() }, "Background") })
+$PassText.Add_GotFocus({ $PassText.Dispatcher.InvokeAsync({ $PassText.SelectAll() }, "Background") })
+
+$window.Topmost = $true
+$window.Add_ContentRendered({
+    $window.Activate()
+    [Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise Pharmacy System")
+    $UserBox.Focus()
+})
+
+# Escape helper for Clavier special characters: \ [ ] { }
+function Escape-ClavierText {
+    param([string]$Text)
+    if ($null -eq $Text) { return "" }
+    $Text = $Text -replace '\\', '\\\\'
+    $Text = $Text -replace '\[',  '\\['
+    $Text = $Text -replace '\]',  '\\]'
+    $Text = $Text -replace '\{',  '\\{'
+    $Text = $Text -replace '\}',  '\\}'
+    return $Text
+}
+
+# Show modal and build $Auth (unchanged)
+$result = $window.ShowDialog()
+if ($result -ne $true) { Write-Host 'Canceled'; exit }
+
+$UserEsc = Escape-ClavierText (($UserBox.Text).Trim())
+$PassEsc = Escape-ClavierText $PassBox.Password
+
+# Single composed EPS login sequence (no variables inside Clavier tokens)
+$script:Auth =
+    "[{Focus,0,Enterprise Pharmacy System}]" +
+    "[{MouseMoveToFocus,100,93}][][{MouseButton,L}]" +
+    "[{MouseMoveToFocus,50,146}][][{MouseButton,L}]" +
+    $UserEsc + "[TAB][]" + $PassEsc + "[ENTER]"
+
+
+# --------------------
+# MAIN SEQUENCE
+# --------------------
+
+# Tunables
+$WaitSeconds     = 2     # how long to wait for MTM to become activatable (only when not already open)
+$PostBurstSleep  = 900   # pause after the one-string send; extend if Java UI is slow
+
+# Quick detection (no wait): success == no exception
+function Is-MTMOpen {
+  try {
+    [Microsoft.VisualBasic.Interaction]::AppActivate("MTM")  # activates or throws if not found
+    return $true
+  } catch { return $false }
+}
+
+# Waited detection for the normal path
+function Wait-ForMTM {
+  param([int]$Seconds = 2)
+  $end = (Get-Date).AddSeconds($Seconds)
+  do {
+    $ok = $false
+    try {
+      [Microsoft.VisualBasic.Interaction]::AppActivate("MTM")  # activates or throws if not found
+      $ok = $true
+    } catch { $ok = $false }
+    if ($ok) { return $true }
+    Start-Sleep -Milliseconds 200
+  } until ((Get-Date) -gt $end)
+  return $false
+}
+
+while ($true) {
+
+  # --- FAST PATH: MTM already open? Use it immediately (no Alt+G, no Auth) ---
+  if (Is-MTMOpen) {
+    & $Clavier /sendkeys "[{Focus,0,MTM*}][][Shift+TAB][][SPACE][][Shift+TAB][][SPACE]"
+    Start-Sleep -Milliseconds $PostBurstSleep
+    continue
+  }
+
+  # --- NORMAL PATH: bring up MTM via EPS Alt+G and Auth ---
+  & $Clavier /sendkeys "[{Focus,0,*EPS/*}][][Alt+G]"
+  Start-Sleep -Milliseconds 400
+
+  & $Clavier /sendkeys $Auth   # single composed string; no tokens inside it
+  Start-Sleep -Milliseconds 800
+
+  if (-not (Wait-ForMTM -Seconds $WaitSeconds)) {
+    Write-Host "EXIT: MTM window not found within $WaitSeconds seconds."
+    exit
+  }
+
+  # MTM action (single pre-rendered Clavier string; no variables inside tokens)
+  & $Clavier /sendkeys "[{Focus,0,MTM*}][][Shift+TAB][][SPACE][][Shift+TAB][][SPACE]"
+  Start-Sleep -Milliseconds $PostBurstSleep
+}
