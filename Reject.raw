@@ -25,170 +25,248 @@ if ($LASTEXITCODE -ne 0) {
 
 # List of variables to check
 $variables = @{
-    "Main" = $Main
-    "Clavier" = $Clavier
-    "Cap2Txt" = $Cap2Txt
+    "Main"     = $Main
+    "Clavier"  = $Clavier
+    "Cap2Txt"  = $Cap2Txt
     "SendKeys" = $SendKeys
-    "Printer" = $Printer
+    "Printer"  = $Printer
 }
 
 # Check if all necessary variables are defined
 foreach ($var in $variables.GetEnumerator()) {
     if (-not $var.Value) {
         $errorMessage = "Error: '$($var.Key)' is not defined.`nOpen Setup [Shift + F1]"
-        . ./errorHandler.ps1 $errorMessage
+        . .\errorHandler.ps1 $errorMessage
         exit 1
     }
 }
 
 $ErrorActionPreference = "Stop"
-add-type -AssemblyName microsoft.VisualBasic
-add-type -AssemblyName System.Windows.Forms
-[Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise")
-[System.Windows.Forms.SendKeys]::SendWait("%{j}")
-start-sleep -Milliseconds 450
+Add-Type -AssemblyName Microsoft.VisualBasic
+Add-Type -AssemblyName System.Windows.Forms
 
-if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Fill"))) {
+# --------------------------------------------------------------------
+# DEBUG helper: simple timestamped log
+# --------------------------------------------------------------------
+function Write-Log {
+    param([string]$Msg, [string]$Level = 'INFO')
+    $ts = (Get-Date).ToString("HH:mm:ss.fff")
+    Write-Host "[$ts] [$Level] $Msg"
+}
 
-    & $Clavier /sendkeys "[{Focus,0,Fill *}][Enter][Tab]"
+# --------------------------------------------------------------------
+# Escape for Clavier tag parameters (inside [{Focus...}] / [{FocusOrLaunch...}])
+# --------------------------------------------------------------------
+function Escape-ClavierParam {
+    param([string]$s)
+    if ($null -eq $s) { return '' }
+    $s = $s -replace '\\', '\\\\'
+    $s = $s -replace '\[',  '\\['
+    $s = $s -replace '\]',  '\\]'
+    $s = $s -replace '\{',  '\\{'
+    $s = $s -replace '\}',  '\\}'
+    $s = $s -replace ',',   '\\,'
+    return $s
+}
 
-    # -------------------------
-    # Holiday and scheduling logic (year-agnostic, includes observed dates)
-    # Holidays included:
-    # - New Year's Day (Jan 1) - observed
-    # - Presidents Day (third Monday in Feb)
-    # - Memorial Day (last Monday in May)
-    # - Independence Day (July 4) - observed
-    # - Labor Day (first Monday in Sep)
-    # - Thanksgiving (fourth Thursday in Nov)
-    # - Christmas Day (Dec 25) - observed
-    # -------------------------
+# --------------------------------------------------------------------
+# Dynamic wait for Fill/Reject using Clavier+ only (no clipboard)
+# [{FocusOrLaunch,window,command,delay}] : if window exists -> focus; else run command
+# --------------------------------------------------------------------
+function Wait-WindowViaClavierFS {
+    param(
+        [string[]]$TitlePatterns,        # e.g., @('Fill *','Reject*')
+        [int]$TimeoutSec = 10,
+        [int]$PollMs = 200,
+        [int]$NudgeEvery = 0,            # gentler: no nudges during wait
+        [switch]$VerboseLog
+    )
 
-    function Get-NthWeekdayOfMonth {
-        param(
-            [int]$Year,
-            [int]$Month,
-            [System.DayOfWeek]$Weekday,
-            [int]$N
-        )
-        $firstOfMonth = Get-Date -Year $Year -Month $Month -Day 1
-        $offset = ([int]$Weekday - [int]$firstOfMonth.DayOfWeek + 7) % 7
-        return $firstOfMonth.AddDays($offset + 7*($N-1)).Date
-    }
+    $marker   = Join-Path $env:TEMP ("clavier_probe_" + [guid]::NewGuid().ToString("N") + ".flag")
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $attempt  = 0
 
-    function Get-LastWeekdayOfMonth {
-        param(
-            [int]$Year,
-            [int]$Month,
-            [System.DayOfWeek]$Weekday
-        )
-        $lastOfMonth = (Get-Date -Year $Year -Month $Month -Day 1).AddMonths(1).AddDays(-1)
-        $offset = ([int]$lastOfMonth.DayOfWeek - [int]$Weekday + 7) % 7
-        return $lastOfMonth.AddDays(-$offset).Date
-    }
+    if (Test-Path $marker) { Remove-Item -Force -ErrorAction SilentlyContinue $marker }
 
-    function Get-ObservedDate {
-        param([datetime]$DateToObserve)
-        switch ($DateToObserve.DayOfWeek) {
-            'Saturday' { return $DateToObserve.AddDays(-1).Date }  # observed Friday
-            'Sunday'   { return $DateToObserve.AddDays(1).Date }   # observed Monday
-            default    { return $DateToObserve.Date }
+    Write-Log "Dynamic wait started. Timeout=${TimeoutSec}s; Poll=${PollMs}ms; Patterns: $($TitlePatterns -join ' | ')" "DEBUG"
+
+    while ((Get-Date) -lt $deadline) {
+        foreach ($rawPat in $TitlePatterns) {
+            $attempt++
+            $pat = Escape-ClavierParam $rawPat
+
+            # Hidden, no-flash marker creation: PowerShell hidden window
+            $cmd = "powershell.exe -NoProfile -WindowStyle Hidden -Command ""Set-Content -Path '$marker' -Value 'MISS' -NoNewline -Force"""
+
+            $seq = "[{FocusOrLaunch,$pat,$cmd,0}]"
+            Write-Log "Attempt #${attempt}: Clavier /sendkeys $seq" "DEBUG"
+
+            & $Clavier /sendkeys $seq
+            Start-Sleep -Milliseconds $PollMs
+
+            if (Test-Path $marker) {
+                Remove-Item -Force -ErrorAction SilentlyContinue $marker | Out-Null
+                Write-Log "Attempt #${attempt}: '$rawPat' not found (marker created)" "DEBUG"
+
+                if ($NudgeEvery -gt 0 -and ($attempt % $NudgeEvery -eq 0)) {
+                    $nudgeSeq = "[{Focus,0,$pat}]"
+                    Write-Log "Attempt #${attempt}: Nudge -> Clavier /sendkeys $nudgeSeq" "DEBUG"
+                    & $Clavier /sendkeys $nudgeSeq
+                }
+            }
+            else {
+                Write-Log "SUCCESS: '$rawPat' activated by Clavier." "INFO"
+                return $true
+            }
         }
     }
 
-    function Get-HolidaysForYear {
-        param([int]$Year)
-        $holidays = @()
+    Write-Log "TIMEOUT: No Fill/Reject match within ${TimeoutSec}s." "WARN"
+    return $false
+}
 
-        # New Year's Day (Jan 1) - actual and observed
-        $ny = Get-Date -Year $Year -Month 1 -Day 1
-        $holidays += $ny.Date
-        $holidays += Get-ObservedDate -DateToObserve $ny
+# --------------------------------------------------------------------
+# Focus Enterprise & request Fill/Reject (Alt+J)
+# --------------------------------------------------------------------
+[Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise") | Out-Null
+[System.Windows.Forms.SendKeys]::SendWait('%{j}')
+Write-Log "Sent Alt+J to open Fill/Reject." "DEBUG"
 
-        # Presidents Day (third Monday in February)
-        $presidents = Get-NthWeekdayOfMonth -Year $Year -Month 2 -Weekday ([DayOfWeek]::Monday) -N 3
-        $holidays += $presidents
+# --------------------------------------------------------------------
+# Dynamic wait via Clavier (no clipboard; with terminal logging)
+# --------------------------------------------------------------------
+$ok = Wait-WindowViaClavierFS -TitlePatterns @('Fill *','Reject*') -TimeoutSec 10 -PollMs 200 -NudgeEvery 0
 
-        # Memorial Day (last Monday in May)
-        $memorial = Get-LastWeekdayOfMonth -Year $Year -Month 5 -Weekday ([DayOfWeek]::Monday)
-        $holidays += $memorial
+if (-not $ok) {
+    . .\errorHandler.ps1 "Fill/Reject window not detected within 10s after Alt+J. No actions were sent."
+    exit 1
+}
 
-        # Independence Day (July 4) - actual and observed
-        $july4 = Get-Date -Year $Year -Month 7 -Day 4
-        $holidays += $july4.Date
-        $holidays += Get-ObservedDate -DateToObserve $july4
+# Slightly longer settle (gentler)
+Start-Sleep -Milliseconds 350
+Write-Log "Fill/Reject detected and focused; continuing…" "INFO"
 
-        # Labor Day (first Monday in September)
-        $labor = Get-NthWeekdayOfMonth -Year $Year -Month 9 -Weekday ([DayOfWeek]::Monday) -N 1
-        $holidays += $labor
+# --------------------------------------------------------------------
+# IMPORTANT: restore your “pre-focus kick” (this was the line you missed)
+# Run it once here to align the Fill UI state before continuing.
+# --------------------------------------------------------------------
+& $Clavier /sendkeys "[{Focus,0,Fill *}][Enter][Tab]"
+Start-Sleep -Milliseconds 150
+Write-Log "Pre-focus kick sent ([Enter][Tab] on Fill)." "DEBUG"
 
-        # Thanksgiving (fourth Thursday in November)
-        $thanksgiving = Get-NthWeekdayOfMonth -Year $Year -Month 11 -Weekday ([DayOfWeek]::Thursday) -N 4
-        $holidays += $thanksgiving
+# --------------------------------------------------------------------
+# Holiday and scheduling logic (unchanged)
+# --------------------------------------------------------------------
+function Get-NthWeekdayOfMonth {
+    param(
+        [int]$Year,
+        [int]$Month,
+        [System.DayOfWeek]$Weekday,
+        [int]$N
+    )
+    $firstOfMonth = Get-Date -Year $Year -Month $Month -Day 1
+    $offset = ([int]$Weekday - [int]$firstOfMonth.DayOfWeek + 7) % 7
+    return $firstOfMonth.AddDays($offset + 7*($N-1)).Date
+}
 
-        # Christmas (Dec 25) - actual and observed
-        $xmas = Get-Date -Year $Year -Month 12 -Day 25
-        $holidays += $xmas.Date
-        $holidays += Get-ObservedDate -DateToObserve $xmas
+function Get-LastWeekdayOfMonth {
+    param(
+        [int]$Year,
+        [int]$Month,
+        [System.DayOfWeek]$Weekday
+    )
+    $lastOfMonth = (Get-Date -Year $Year -Month $Month -Day 1).AddMonths(1).AddDays(-1)
+    $offset = ([int]$lastOfMonth.DayOfWeek - [int]$Weekday + 7) % 7
+    return $lastOfMonth.AddDays(-$offset).Date
+}
 
-        # Return unique dates
-        return ($holidays | Sort-Object -Unique)
+function Get-ObservedDate {
+    param([datetime]$DateToObserve)
+    switch ($DateToObserve.DayOfWeek) {
+        'Saturday' { return $DateToObserve.AddDays(-1).Date }  # observed Friday
+        'Sunday'   { return $DateToObserve.AddDays(1).Date }   # observed Monday
+        default    { return $DateToObserve.Date }
     }
+}
 
-    function Is-Holiday {
-        param([datetime]$CheckDate)
-        # Force integer year to avoid arithmetic errors
-        $yearInt = [int]$CheckDate.Year
+function Get-HolidaysForYear {
+    param([int]$Year)
+    $holidays = @()
 
-        # Compute adjacent years in separate variables to avoid ambiguous operator overloads
-        $prevYear = $yearInt - 1
-        $nextYear = $yearInt + 1
-        $yearsToCheck = @($prevYear, $yearInt, $nextYear)
+    $ny = Get-Date -Year $Year -Month 1 -Day 1
+    $holidays += $ny.Date
+    $holidays += Get-ObservedDate -DateToObserve $ny
 
-        foreach ($y in $yearsToCheck) {
-            $hols = Get-HolidaysForYear -Year $y
-            if ($hols -contains $CheckDate.Date) { return $true }
-        }
-        return $false
+    $presidents = Get-NthWeekdayOfMonth -Year $Year -Month 2 -Weekday ([DayOfWeek]::Monday) -N 3
+    $holidays += $presidents
+
+    $memorial = Get-LastWeekdayOfMonth -Year $Year -Month 5 -Weekday ([DayOfWeek]::Monday)
+    $holidays += $memorial
+
+    $july4 = Get-Date -Year $Year -Month 7 -Day 4
+    $holidays += $july4.Date
+    $holidays += Get-ObservedDate -DateToObserve $july4
+
+    $labor = Get-NthWeekdayOfMonth -Year $Year -Month 9 -Weekday ([DayOfWeek]::Monday) -N 1
+    $holidays += $labor
+
+    $thanksgiving = Get-NthWeekdayOfMonth -Year $Year -Month 11 -Weekday ([DayOfWeek]::Thursday) -N 4
+    $holidays += $thanksgiving
+
+    $xmas = Get-Date -Year $Year -Month 12 -Day 25
+    $holidays += $xmas.Date
+    $holidays += Get-ObservedDate -DateToObserve $xmas
+
+    return ($holidays | Sort-Object -Unique)
+}
+
+function Is-Holiday {
+    param([datetime]$CheckDate)
+    $yearInt  = [int]$CheckDate.Year
+    $prevYear = $yearInt - 1
+    $nextYear = $yearInt + 1
+    $yearsToCheck = @($prevYear, $yearInt, $nextYear)
+
+    foreach ($y in $yearsToCheck) {
+        $hols = Get-HolidaysForYear -Year $y
+        if ($hols -contains $CheckDate.Date) { return $true }
     }
+    return $false
+}
 
-    # Compute initial candidate date using existing weekend rule
-    $today = Get-Date
-    switch ($today.DayOfWeek) {
-        'Friday'  { $candidate = $today.AddDays(3) }  # Friday -> Monday
-        'Saturday'{ $candidate = $today.AddDays(2) }  # Saturday -> Monday
-        default   { $candidate = $today.AddDays(1) }  # otherwise -> tomorrow
+# Compute initial candidate date using existing weekend rule
+$today = Get-Date
+switch ($today.DayOfWeek) {
+    'Friday'   { $candidate = $today.AddDays(3) }  # Friday -> Monday
+    'Saturday' { $candidate = $today.AddDays(2) }  # Saturday -> Monday
+    default    { $candidate = $today.AddDays(1) }  # otherwise -> tomorrow
+}
+
+# Advance candidate while it's a holiday or weekend
+while ($true) {
+    if (Is-Holiday -CheckDate $candidate) {
+        $candidate = $candidate.AddDays(1)
+        continue
     }
-
-    # Advance candidate while it's a holiday or weekend
-    while ($true) {
-        # If candidate is a holiday (including observed), move to next calendar day and re-evaluate
-        if (Is-Holiday -CheckDate $candidate) {
-            $candidate = $candidate.AddDays(1)
-            continue
-        }
-
-        # If candidate falls on Saturday or Sunday, jump to Monday
-        if ($candidate.DayOfWeek -eq 'Saturday') {
-            $candidate = $candidate.AddDays(2)
-            continue
-        }
-        if ($candidate.DayOfWeek -eq 'Sunday') {
-            $candidate = $candidate.AddDays(1)
-            continue
-        }
-
-        # Candidate is not a holiday and not a weekend -> done
-        break
+    if ($candidate.DayOfWeek -eq 'Saturday') {
+        $candidate = $candidate.AddDays(2)
+        continue
     }
+    if ($candidate.DayOfWeek -eq 'Sunday') {
+        $candidate = $candidate.AddDays(1)
+        continue
+    }
+    break
+}
 
-    # Final date string used in your automation (avoid naming collision with Date type)
-    $DateStr = $candidate.ToString('MM-dd-yyyy')
+# Final date string used in your automation
+$DateStr = $candidate.ToString('MM-dd-yyyy')
+Write-Log "Next ship date resolved to $DateStr" "DEBUG"
 
-    # -------------------------
-    # Build and send the automation string
-    # -------------------------
-    $CompileString = "[{Focus,0,Fill *}]" + $DateStr + "[{Wait, 30}][TAB][{Wait, 30}][TAB][{Wait, 30}]12P[{MouseMoveToFocus,100,410}][{MouseButton,L}][{Wait, 30}][t][TAB][{Wait, 10}][ALT+o]"
-    & $Clavier /sendkeys $CompileString
-
-} else { exit }
+# --------------------------------------------------------------------
+# Build and send the automation string (your original)
+# --------------------------------------------------------------------
+$CompileString = "[{Focus,0,Fill *}]" + $DateStr + "[{Wait, 30}][TAB][{Wait, 30}][TAB][{Wait, 30}]12P[{MouseMoveToFocus,100,410}][{MouseButton,L}][{Wait, 30}][t][TAB][{Wait, 10}][ALT+o]"
+Write-Log "Sending Clavier sequence…" "DEBUG"
+& $Clavier /sendkeys $CompileString
+Write-Log "Sequence sent." "INFO"
