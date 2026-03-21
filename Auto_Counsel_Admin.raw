@@ -10,9 +10,9 @@
 }
 #>
 
-$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
-add-type -name win -member $dllvar -namespace native
-[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
+#$dllvar = '[DllImport("user32.dll")] public static extern bool ShowWindow(int handle, int state);'
+#add-type -name win -member $dllvar -namespace native
+#[native.win]::ShowWindow(([System.Diagnostics.Process]::GetCurrentProcess() | Get-Process).MainWindowHandle, 0)
 
 # Set the working directory to the script's location
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
@@ -156,32 +156,61 @@ function Wait-Pixel {
         [hashtable]$Targets,
         [hashtable]$Skips,
         [int]$Tolerance      = 70,
-        [int]$StableReads    = 2,
+        [int]$StableReads    = 1,
         [int]$SamplesPerRead = 2,
         [int]$Kernel         = 1,
         [int]$InterSampleMs  = 10,
         [int]$SettleMs       = 10,
-        [int]$TimeoutMs      = 300
+        [int]$TimeoutMs      = 200,
+        [switch]$LogRaw
     )
     $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
     $stable = 0
+    $iter = 0
+
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds $SettleMs
+        $iter++
+
+        # Collect samples
         $samples = @()
         for ($i=0; $i -lt $SamplesPerRead; $i++) {
             $samples += (Get-ScreenColor -X $X -Y $Y -Raw -Kernel $Kernel)
             if ($i -lt $SamplesPerRead-1) { Start-Sleep -Milliseconds $InterSampleMs }
         }
+
+        # Classify
         $cls = Test-ColorBucket -Samples $samples -Targets $Targets -Skips $Skips -Tolerance $Tolerance
+
+        # --- Minimal console log (only when -LogRaw is passed) ---
+        if ($LogRaw) {
+            $rgb = ($samples | ForEach-Object { "($($_.R),$($_.G),$($_.B))" }) -join ', '
+            Write-Host ("Wait-Pixel iter={0} @({1},{2}) kernel={3} tol={4} samples={5} rgb={6}" -f $iter, $X, $Y, $Kernel, $Tolerance, $SamplesPerRead, $rgb)
+            Write-Host ("  classify => result={0} name={1} count={2} stable={3}" -f $cls.Result, $cls.Name, $cls.Count, $stable)
+        }
+        # ---------------------------------------------------------
+
         switch ($cls.Result) {
-            'Success' { $stable++; if ($stable -ge $StableReads) { return @{ Result='Success'; X=$X; Y=$Y; Bucket=$cls.Name } } }
-            'Skip'    { return @{ Result='Skip';    X=$X; Y=$Y; Bucket=$cls.Name } }
-            default   { $stable = 0 }
+            'Success' {
+                $stable++
+                if ($stable -ge $StableReads) {
+                    if ($LogRaw) { Write-Host ("  -> RETURN Success (X={0}, Y={1}, Bucket={2})" -f $X, $Y, $cls.Name) }
+                    return @{ Result='Success'; X=$X; Y=$Y; Bucket=$cls.Name }
+                }
+            }
+            'Skip' {
+                if ($LogRaw) { Write-Host ("  -> RETURN Skip (X={0}, Y={1}, Bucket={2})" -f $X, $Y, $cls.Name) }
+                return @{ Result='Skip'; X=$X; Y=$Y; Bucket=$cls.Name }
+            }
+            default {
+                $stable = 0
+            }
         }
     }
+
+    if ($LogRaw) { Write-Host ("  -> RETURN Timeout (X={0}, Y={1})" -f $X, $Y) }
     return @{ Result='Timeout'; X=$X; Y=$Y }
 }
-
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -485,38 +514,40 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
     Do {
         #Check List
         $ListSuccess = 0
-        $ListEmpty = 0
         $endTime = (Get-Date).Add((New-TimeSpan -Seconds 3))
+
         Do {
+            # Move pointer to the status pixel location
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,382,665}]"
-            Start-sleep -Milliseconds 40
+            Start-Sleep -Milliseconds 40
 
-            # --- ROBUST COLOR CHECK (replaces string compare for records/empty) ---
-            $anchor = Wait-CursorStable -StableMs 50 -PollMs 20 -TimeoutMs 1500
+            # --- BLUE-ONLY CHECK (ignore grey completely) ---
+            $anchor = Wait-CursorStable -StableMs 50 -PollMs 20 -TimeoutMs 1000
             if ($anchor) {
-                $targets = @{ Records = [System.Drawing.Color]::FromArgb(206,225,242) }  # "records found" blue-ish
-                $skips   = @{ Empty   = [System.Drawing.Color]::FromArgb(211,211,211) }  # empty list gray
+                # Only target the blue "records found" color
+                $targets = @{ Records = [System.Drawing.Color]::FromArgb(206,225,242) } # records-found blue
+                $skips   = @{}  # no skip colors
 
-                $cls = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 70 -StableReads 2 -SamplesPerRead 2 -Kernel 1 -SettleMs 10 -TimeoutMs 1000
+                Write-Host "#CHECK LIST"
+                $cls = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 10 -StableReads 2 -SamplesPerRead 2 -Kernel 1 -SettleMs 10 -TimeoutMs 1000 -LogRaw
 
                 if ($cls.Result -eq 'Success') {
-                    write-host "RECORDS FOUND (bucket:$($cls.Bucket))"
+                    Write-Host "RECORDS FOUND (bucket:$($cls.Bucket))"
                     $ListSuccess = 1
                 }
-                elseif ($cls.Result -eq 'Skip') {
-                    $Done = 1
-                    write-host "LIST EMPTY (bucket:$($cls.Bucket))"
-                    exit     # preserve original behavior (exits immediately)
-                    $ListEmpty = 1  # (will not be reached; preserved for parity)
-                }
-                # else Unknown/Timeout: let loop retry until endTime
+                # For Unknown/Timeout, just let the loop iterate until endTime
             } else {
-                # If anchor didn't stabilize, let the loop retry quickly
+                # If anchor didn't stabilize, try again quickly
                 Start-Sleep -Milliseconds 100
             }
-            # --- END ROBUST COLOR CHECK ---
+            # --- END BLUE-ONLY CHECK ---
+        } Until ( ($ListSuccess -eq 1) -or ((Get-Date) -gt $endTime) )
 
-        } Until (($ListSuccess -eq 1) -or ($ListEmpty -eq 1) -or ((Get-Date) -gt $endTime))
+        
+        if ($ListSuccess -ne 1) {
+            Write-Host "No blue detected within the time window — exiting."
+            exit
+        }
 
         #Start Counsel Loop
         & $Clavier /sendkeys "[Alt+O]"
@@ -552,7 +583,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
         Start-sleep -Milliseconds 40
 
         # Wait for pointer to stop moving and lock absolute X/Y
-        $anchor = Wait-CursorStable -StableMs 50 -PollMs 25 -TimeoutMs 1000
+        $anchor = Wait-CursorStable -StableMs 50 -PollMs 25 -TimeoutMs 500
         if (-not $anchor) {
             # If the pointer never stabilizes
             $MTMSkip = 1 
@@ -567,7 +598,8 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             }
 
             # Wait for a stable classification at the locked absolute position
-            $check = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 70 -StableReads 2 -SamplesPerRead 2 -Kernel 1 -SettleMs 10 -TimeoutMs 2000
+            Write-Host "#CHECK MTM"
+            $check = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 10 -StableReads 2 -SamplesPerRead 2 -Kernel 1 -SettleMs 10 -TimeoutMs 2000 -LogRaw
 
             # Move once to the known relative point
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
@@ -619,7 +651,8 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
                 $targets = @{ GoGreen = [System.Drawing.Color]::FromArgb(7,165,5) }
                 $skips   = @{ White   = [System.Drawing.Color]::FromArgb(251,251,251) }
 
-                $cls1 = Wait-Pixel -X $anchor2.X -Y $anchor2.Y -Targets $targets -Skips $skips -Tolerance 20 -StableReads 2 -SamplesPerRead 2 -Kernel 3 -SettleMs 20 -TimeoutMs 300
+                Write-Host "#CHECK COUNSELING"
+                $cls1 = Wait-Pixel -X $anchor2.X -Y $anchor2.Y -Targets $targets -Skips $skips -Tolerance 20 -StableReads 2 -SamplesPerRead 2 -Kernel 3 -SettleMs 20 -TimeoutMs 300 -LogRaw
                 if ($cls1.Result -eq 'Success') { $isGreen = $true }
                 elseif ($cls1.Result -eq 'Skip') { $isWhite = $true }
             }
@@ -657,7 +690,8 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
                 $targets = @{ GoGreen = [System.Drawing.Color]::FromArgb(7,165,5) }
                 $skips   = @{ White   = [System.Drawing.Color]::FromArgb(251,251,251) }
 
-                $cls2 = Wait-Pixel -X $anchor3.X -Y $anchor3.Y -Targets $targets -Skips $skips -Tolerance 70 -StableReads 2 -SamplesPerRead 2 -Kernel 1 -SettleMs 10 -TimeoutMs 300
+                Write-Host "#CHECK COUNSELING 2"
+                $cls2 = Wait-Pixel -X $anchor3.X -Y $anchor3.Y -Targets $targets -Skips $skips -Tolerance 70 -StableReads 2 -SamplesPerRead 2 -Kernel 1 -SettleMs 10 -TimeoutMs 300 -LogRaw
                 if ($cls2.Result -eq 'Success') { $isGreen2 = $true }
                 elseif ($cls2.Result -eq 'Skip') { $isWhite2 = $true }
             }
