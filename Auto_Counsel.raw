@@ -41,21 +41,176 @@ foreach ($var in $variables.GetEnumerator()) {
     }
 }
 
-Function Get-ScreenColor {
-    $pos = [System.Windows.Forms.Cursor]::Position
-    $bmp = New-Object System.Drawing.Bitmap(1, 1)
-    $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-    $graphics.CopyFromScreen($pos, [System.Drawing.Point]::Empty, $bmp.Size)
-    $pixel = $bmp.GetPixel(0, 0)
-
-    return "rgb($($pixel.R), $($pixel.G), $($pixel.B))"
-}
-
 Add-type -AssemblyName Microsoft.VisualBasic
 Add-Type -AssemblyName System.Windows.Forms
 
-& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,620,140}][{MouseButton,L}][]1[Ctrl+A][Backspace]"
-Start-sleep -Milliseconds 200
+function Get-ScreenColor {
+    [CmdletBinding(DefaultParameterSetName='Cursor')]
+    param(
+        [Parameter(Mandatory=$true, ParameterSetName='Point')][int]$X,
+        [Parameter(Mandatory=$true, ParameterSetName='Point')][int]$Y,
+        [int]$Kernel = 0,   # 0=single pixel; 1=3x3; 2=5x5 (averaged)
+        [switch]$Raw       # return [System.Drawing.Color] if set; otherwise "rgb(r, g, b)"
+    )
+
+    if ($PSCmdlet.ParameterSetName -eq 'Cursor') {
+        $p = [System.Windows.Forms.Cursor]::Position
+        $X = $p.X; $Y = $p.Y
+    }
+
+    $w = $h = (2 * $Kernel + 1)
+    $bmp = New-Object System.Drawing.Bitmap($w, $h)
+    try {
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        try {
+            $g.CopyFromScreen(
+                [System.Drawing.Point]::new($X - $Kernel, $Y - $Kernel),
+                [System.Drawing.Point]::Empty,
+                [System.Drawing.Size]::new($w, $h)
+            )
+        } finally { $g.Dispose() }
+
+        if ($Kernel -le 0) {
+            $c = $bmp.GetPixel([Math]::Min($Kernel,$w-1), [Math]::Min($Kernel,$h-1))
+        } else {
+            $sumR = $sumG = $sumB = 0
+            for ($yy=0; $yy -lt $h; $yy++) {
+                for ($xx=0; $xx -lt $w; $xx++) {
+                    $p = $bmp.GetPixel($xx,$yy)
+                    $sumR += $p.R; $sumG += $p.G; $sumB += $p.B
+                }
+            }
+            $px = $w * $h
+            $r = [int][Math]::Round($sumR / $px)
+            $gC= [int][Math]::Round($sumG / $px)
+            $b = [int][Math]::Round($sumB / $px)
+            $c = [System.Drawing.Color]::FromArgb($r,$gC,$b)
+        }
+
+        if ($Raw) { return $c }
+        else { return ("rgb({0}, {1}, {2})" -f $c.R, $c.G, $c.B) }
+    }
+    finally { $bmp.Dispose() }
+}
+
+# Wait until the cursor stops moving (so we don't sample mid-move)
+function Wait-CursorStable {
+    param(
+        [int]$StableMs = 100,
+        [int]$PollMs   = 20,
+        [int]$TimeoutMs= 2000
+    )
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+    $stableFor = 0
+    $last = [System.Windows.Forms.Cursor]::Position
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds $PollMs
+        $now = [System.Windows.Forms.Cursor]::Position
+        if ($now.X -eq $last.X -and $now.Y -eq $last.Y) {
+            $stableFor += $PollMs
+            if ($stableFor -ge $StableMs) { return $now }
+        } else {
+            $last = $now; $stableFor = 0
+        }
+    }
+    return $null
+}
+
+function Get-ColorDistance([System.Drawing.Color]$a, [System.Drawing.Color]$b) {
+    $dr = $a.R - $b.R; $dg = $a.G - $b.G; $db = $a.B - $b.B
+    [Math]::Sqrt($dr*$dr + $dg*$dg + $db*$db)
+}
+
+function Test-ColorBucket {
+    param(
+        [System.Drawing.Color[]]$Samples,
+        [hashtable]$Targets,   # e.g., @{ Green = [Drawing.Color]::FromArgb(0,178,0) }
+        [hashtable]$Skips,     # e.g., @{ Black=[...] ; Gray=[...] }
+        [int]$Tolerance = 18
+    )
+    $hit = @{}; foreach($k in $Targets.Keys){ $hit[$k]=0 }
+    $miss= @{}; foreach($k in $Skips.Keys){   $miss[$k]=0 }
+
+    foreach($s in $Samples){
+        foreach($k in $Targets.Keys){ if((Get-ColorDistance $s $Targets[$k]) -le $Tolerance){ $hit[$k]++ } }
+        foreach($k in $Skips.Keys){   if((Get-ColorDistance $s $Skips[$k])   -le $Tolerance){ $miss[$k]++ } }
+    }
+    $n=[Math]::Max(1,$Samples.Count)
+    $bestHitName=$null; $bestHit=-1; foreach($k in $hit.Keys){ if($hit[$k] -gt $bestHit){$bestHit=$hit[$k];$bestHitName=$k} }
+    $bestMissName=$null; $bestMiss=-1; foreach($k in $miss.Keys){ if($miss[$k]-gt $bestMiss){$bestMiss=$miss[$k];$bestMissName=$k} }
+
+    if ($bestHit  -ge [Math]::Ceiling($n/2.0)) { return @{ Result='Success'; Name=$bestHitName;  Count=$bestHit } }
+    if ($bestMiss -ge [Math]::Ceiling($n/2.0)) { return @{ Result='Skip';    Name=$bestMissName; Count=$bestMiss } }
+    return @{ Result='Unknown'; Name=$null; Count=0 }
+}
+
+function Wait-Pixel {
+    param(
+        [int]$X, [int]$Y,
+        [hashtable]$Targets,
+        [hashtable]$Skips,
+        [int]$Tolerance = 70,
+        [int]$StableReads = 1,
+        [int]$SamplesPerRead = 1,
+        [int]$Kernel = 1,
+        [int]$InterSampleMs = 10,
+        [int]$SettleMs = 10,
+        [int]$TimeoutMs = 200,
+        [switch]$LogRaw
+    )
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+    $stable = 0
+    $iter = 0
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds $SettleMs
+        $iter++
+
+        # Collect samples
+        $samples = @()
+        for ($i=0; $i -lt $SamplesPerRead; $i++) {
+            $samples += (Get-ScreenColor -X $X -Y $Y -Raw -Kernel $Kernel)
+            if ($i -lt $SamplesPerRead-1) { Start-Sleep -Milliseconds $InterSampleMs }
+        }
+
+        # Classify
+        $cls = Test-ColorBucket -Samples $samples -Targets $Targets -Skips $Skips -Tolerance $Tolerance
+
+        # ----- Verbose debug only when -LogRaw -----
+        if ($LogRaw) {
+            $rgb = ($samples | ForEach-Object { "($($_.R),$($_.G),$($_.B))" }) -join ', '
+            Write-Host ("Wait-Pixel iter={0} @({1},{2}) kernel={3} tol={4} samples={5} rgb={6}" -f $iter, $X, $Y, $Kernel, $Tolerance, $SamplesPerRead, $rgb)
+            Write-Host (" classify => result={0} name={1} count={2} stable={3}" -f $cls.Result, $cls.Name, $cls.Count, $stable)
+        }
+        # ------------------------------------------
+
+        switch ($cls.Result) {
+            'Success' {
+                $stable++
+                if ($stable -ge $StableReads) {
+                    if ($LogRaw) { Write-Host (" -> RETURN Success (X={0}, Y={1}, Bucket={2})" -f $X, $Y, $cls.Name) }
+                    return @{ Result='Success'; X=$X; Y=$Y; Bucket=$cls.Name }
+                }
+            }
+            'Skip' {
+                if ($LogRaw) { Write-Host (" -> RETURN Skip (X={0}, Y={1}, Bucket={2})" -f $X, $Y, $cls.Name) }
+                return @{ Result='Skip'; X=$X; Y=$Y; Bucket=$cls.Name }
+            }
+            default {
+                $stable = 0
+            }
+        }
+    }
+    if ($LogRaw) { Write-Host (" -> RETURN Timeout (X={0}, Y={1})" -f $X, $Y) }
+    return @{ Result='Timeout'; X=$X; Y=$Y }
+}
+
+# Move EPS to the side
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,0,0}][{MouseButton,LD}][{MouseMoveTo,880,250}][][{MouseButton,LU}]"
+Start-sleep -Milliseconds 100
+
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,620,140}][{MouseButton,L}][][Ctrl+A][Backspace][{Focus,0,*EPS/*}]"
+Start-sleep -Milliseconds 300
+
 [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
 [System.Windows.Forms.SendKeys]::SendWait("{PGUP 2}")
 
@@ -65,34 +220,71 @@ $Required = 0
 $PreviousRx = ""
 $done = $false
 $CurrentRxStatus = ""
+$PreviousRxKey = $null
+$DupCount = 0
 
 Do {
+    # Slightly slower copy + quick fallback reread (tiny delay for stability)
     [System.Windows.Forms.SendKeys]::SendWait("^c")
-    Start-sleep -Milliseconds 15
-    $CurrentRxStatus = (Get-Clipboard).Split("`t")[13]
-    $CurrentRx = (Get-Clipboard).Split("`t")[0, 4, 5]
-    $CurrentRequired = (Get-Clipboard).Split("`t")[9]
+    Start-Sleep -Milliseconds 25
+    $clip = Get-Clipboard
+    if (-not $clip) { Start-Sleep -Milliseconds 30; $clip = Get-Clipboard }
 
-    if ([string]$PreviousRx -eq $CurrentRx) {
+    $cols = $clip.Split("`t")
+    if ($cols.Count -lt 14) {
+        # One more light retry if the row text wasn't ready yet
+        Start-Sleep -Milliseconds 30
+        [System.Windows.Forms.SendKeys]::SendWait("^c")
+        Start-Sleep -Milliseconds 25
+        $clip = Get-Clipboard
+        $cols = $clip.Split("`t")
+        if ($cols.Count -lt 14) {
+            # If still malformed, step down and try next row (do not count this one)
+            [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+            Start-Sleep -Milliseconds 25
+            continue
+        }
+    }
+
+    $CurrentRxStatus = $cols[13]
+    $CurrentRx       = $cols[0,4,5]
+    $CurrentRequired = $cols[9]
+    $CurrentRxSell   = $cols[1]
+    $CurrentRxKey    = ($cols[0],$cols[4],$cols[5]) -join '|'
+
+    # Duplicate detection: allow up to 2 dupes; stop only on the 3rd in a row
+    if ($PreviousRxKey -and $PreviousRxKey -eq $CurrentRxKey) {
+        $DupCount++
+    } else {
+        $DupCount = 0
+    }
+
+    if ($DupCount -ge 3) {
         $done = $true
         break
     }
 
-    $CurrentRxSell = (Get-Clipboard).Split("`t")[1]
+    # If duplicate but not 3rd yet, skip counting and move on
+    if ($DupCount -gt 0) {
+        [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+        Start-Sleep -Milliseconds 25
+        continue
+    }
 
     if ([string]$CurrentRxSell -eq "True") {
         $Sell++
-        Start-sleep -Milliseconds 8
+        Start-Sleep -Milliseconds 8
         if ([string]$CurrentRequired -match "Required") {
             $Required++
         }
     }
 
     $Total++
-    $PreviousRx = $CurrentRx
+    $PreviousRxKey = $CurrentRxKey
     Write-Host "$Total $CurrentRx"
 
     [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
+    Start-Sleep -Milliseconds 25
     Write-Host "System-Send-Key: {DOWN}"
 } Until ($done)
 
@@ -114,35 +306,45 @@ if ($CurrentRxStatus -match "Halt") {
 [Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise")
 [System.Windows.Forms.SendKeys]::SendWait("%{o}")
 Start-sleep -Milliseconds 150
+
 Write-Host "==== PRE-CHECK ===="
 
 $MTMSuccess = 0
-$MTMSkip = 0
+$MTMSkip    = 0
 
-Do {
+# --- MTM pixel check (mirrors Admin method) ---
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
+Start-Sleep -Milliseconds 40
+
+# Lock absolute coordinates after a short, tighter stabilization
+$anchor = Wait-CursorStable -StableMs 50 -PollMs 25 -TimeoutMs 500
+if (-not $anchor) {
+    $MTMSkip = 1
+} else {
+    # Same buckets as Admin: detect green; treat black/gray as skips
+    $targets = @{ MTMGreen = [System.Drawing.Color]::FromArgb(0,178,0) }
+    $skips   = @{
+        Black = [System.Drawing.Color]::FromArgb(0,0,0)
+        Gray  = [System.Drawing.Color]::FromArgb(168,170,168)
+    }
+
+    Write-Host "#CHECK MTM"
+    $check = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips `
+                        -Tolerance 10 -StableReads 2 -SamplesPerRead 1 -Kernel 1 `
+                        -SettleMs 10 -TimeoutMs 500 -LogRaw
+
+    # Re-assert the exact MTM point like in Admin to avoid drift
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
-    Start-sleep -Milliseconds 10
-    $PixelRGB = Get-ScreenColor
+    Start-Sleep -Milliseconds 40
 
-    if ($PixelRGB -eq "rgb(241, 243, 241)") {
-        Continue
+    switch ($check.Result) {
+        'Success' { $MTMSuccess = 1; Write-Host "MTM Success!" }
+        'Skip'    { $MTMSkip    = 1 }
+        'Timeout' { $MTMSkip    = 1 }
     }
+}
 
-    if ($PixelRGB -eq "rgb(0, 0, 0)") {
-        $MTMSkip = 1
-    }
-
-    if ($PixelRGB -eq "rgb(168, 170, 168)") {
-        $MTMSkip = 1
-    }
-
-    if ($PixelRGB -eq "rgb(0, 178, 0)") {
-        $MTMSuccess = 1
-    }
-
-} Until (($MTMSuccess -eq 1) -or ($MTMSkip -eq 1))
-
-Start-sleep -Milliseconds 300
+Start-Sleep -Milliseconds 300
 
 if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
     & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
@@ -160,71 +362,241 @@ if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
     Start-sleep -Milliseconds 200
 }
 
-Start-sleep -Milliseconds 100
 if ($MTMSuccess -eq 1) {
+    Start-sleep -Milliseconds 300
     & $Clavier /sendkeys "[{Focus,0,MTM*}][Alt+C]"
-    Write-Host "Clav-Send-Key: [{Focus,0,MTM*}][Alt+C]"
     Start-sleep -Milliseconds 200
+    Write-Host "Clav-Send-Key: [{Focus,0,MTM*}][Alt+C]"
 }
 
 Start-sleep -Milliseconds 200
 
+& $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,29,385}]"
+Start-Sleep -Milliseconds 10
+
+# Loop state + overrun (keeps $Processed counting but allows a few extra tries)
 $CheckStop = 0
 $Processed = 0
-Do {
-    #Check Status 1
+
+# After we've handled the expected $Sell items, allow a few extra passes
+$OverrunBudget = 1
+$OverrunLeft   = $OverrunBudget
+
+# Track gray-only streak and consecutive bad classifications (runaway guard)
+$allGrayStart           = $null
+$badReadConsecutive     = 0
+$badReadConsecutiveMax  = 8
+
+# INIT for Loading guard (add these if not already present above)
+$loadingConsec    = 0
+$loadingConsecMax = 6
+
+# NEW: deterministic loop controls (cap + immediate exit for non-bucket colors)
+$LoopCount         = 0
+$HardCap           = [Math]::Max($Sell + $OverrunBudget, $OverrunBudget + 2)  # processed + budget, with a small floor
+$UnknownExitAfter  = 1      # exit on first unbucketed color (set 2 if you want 1 grace attempt)
+$unknownStreak     = 0
+
+# Status pixel Green/White/Gray check — always re-aim every iteration
+while ($true) {
+
+    # NEW: hard cap to prevent any runaway regardless of state
+    $LoopCount++
+    if ($LoopCount -ge $HardCap) {
+        Write-Host "SAFETY: Loop cap reached ($HardCap). Exiting to prevent runaway."
+        EXIT
+    }
+
+    # Always move to the canonical status pixel *before* classifying (correct coordinate)
     & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,29,385}]"
-    Start-sleep -Milliseconds 10
-    $PixelRGB1 = Get-ScreenColor
-    #Stop if green
-    if ($PixelRGB1 -eq "rgb(7, 165, 5)") {
+    Start-Sleep -Milliseconds 10
+
+    # Lock a fresh absolute point each pass (handles overlays / window moves)
+    $pt = Wait-CursorStable -StableMs 40 -PollMs 20 -TimeoutMs 300
+    if (-not $pt) { $pt = [System.Windows.Forms.Cursor]::Position }
+
+    # Build buckets: GREEN target; WHITE + multiple GRAY shades + LOADING as skips
+    $targets = @{ Ready = [System.Drawing.Color]::FromArgb(7,165,5) }      # GREEN
+    $skips   = @{
+        White    = [System.Drawing.Color]::FromArgb(251,251,251)           # WHITE
+        Gray     = [System.Drawing.Color]::FromArgb(168,170,168)           # original GRAY
+        GrayMid  = [System.Drawing.Color]::FromArgb(200,200,200)           # new GRAY sample
+        GrayLite = [System.Drawing.Color]::FromArgb(212,212,212)           # new GRAY sample
+        Loading  = [System.Drawing.Color]::FromArgb(241,243,241)           # MTM/overlay 'loading' tone
+    }
+
+    # Tuning: modest tolerance to distinguish White vs the lighter Grays
+    $StatusTolerance      = 12
+    $StatusStableReads    = 2
+    $StatusSamplesPerRead = 1
+    $StatusKernel         = 1
+
+    # Slightly shorter classification timeout in overrun/high-alert
+    $timeoutMs = if ($Processed -ge $Sell) { 450 } else { 600 }
+
+    # Classify the pixel (LogRaw on for tuning)
+    $cls = Wait-Pixel -X $pt.X -Y $pt.Y -Targets $targets -Skips $skips `
+                      -Tolerance $StatusTolerance -StableReads $StatusStableReads `
+                      -SamplesPerRead $StatusSamplesPerRead -Kernel $StatusKernel `
+                      -SettleMs 10 -TimeoutMs $timeoutMs -LogRaw
+
+    # NEW: Immediate exit for non-bucket colors (Unknown/Timeout)
+    if ($cls.Result -eq 'Unknown' -or $cls.Result -eq 'Timeout') {
+        $unknownStreak++
+        if ($unknownStreak -ge $UnknownExitAfter) {
+            Write-Host "SAFETY: Unbucketed color (Unknown/Timeout). Exiting immediately."
+            EXIT
+        }
+    } else {
+        $unknownStreak = 0
+    }
+
+    # Reset/increment the "bad read" streak counter (kept for legacy guard)
+    if ($cls.Result -in @('Success','Skip')) { $badReadConsecutive = 0 } else { $badReadConsecutive++ }
+
+    # SAFETY EXIT: Too many consecutive unreadable frames (likely overlay or UI hang)
+    if ($badReadConsecutive -ge $badReadConsecutiveMax) {
+        Write-Host "SAFETY: Too many consecutive unreadable frames. Exiting to prevent runaway."
         $CheckStop = 1
+        break
     }
-    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+l][][Alt+x]"
-    Start-sleep -Milliseconds 200
-    $Processed ++
-    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
-        & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
-        Start-sleep -Milliseconds 200
-    }
-    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
-        & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
-        Start-sleep -Milliseconds 200
-    }
-    if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
-        & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
-        Start-sleep -Milliseconds 200
-    }
-    if ($Processed -eq $Sell) {
+
+    if ($cls.Result -eq 'Success') {
+        # GREEN => ABSOLUTE STOP. Do NOT press Alt+l/Alt+x when green is shown.
+        Write-Host "#GREEN"
+        $loadingConsec = 0
         $CheckStop = 1
+        break
     }
+    elseif ($cls.Result -eq 'Skip' -and $cls.Bucket -eq 'White') {
+        # =========================
+        # WHITE => Normal progress
+        # =========================
+        Write-Host "#WHITE"
+        $loadingConsec = 0
+        $allGrayStart  = $null
 
-    #Check Status 2
-    & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,29,385}]"
-    Start-sleep -Milliseconds 10
-    $PixelRGB2 = Get-ScreenColor
+        # Proceed to next item fully (Alt+l then Alt+x)
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+l][][Alt+x]"
+        Start-Sleep -Milliseconds 200
+        $Processed++
 
-    if ($PixelRGB2 -ne "rgb(7, 165, 5)") {
-        Continue
+        # Popups (unchanged)
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
+            & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
+            Start-Sleep -Milliseconds 200
+        }
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
+            & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
+            Start-Sleep -Milliseconds 200
+        }
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
+            & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
+            Start-Sleep -Milliseconds 200
+        }
+
+        # Overrun tries beyond expected $Sell
+        if ($Processed -ge $Sell) {
+            if ($OverrunLeft -gt 0) { $OverrunLeft-- } else { $CheckStop = 1; break }
+        }
+
+        continue
     }
+    elseif ($cls.Result -eq 'Skip' -and ($cls.Bucket -in @('Gray','GrayMid','GrayLite'))) {
+        # ================================
+        # GRAY => Minimal nudge; keep trying
+        # ================================
+        Write-Host "#GRAY"
+        $loadingConsec = 0
 
-    if ($PixelRGB2 -eq "rgb(7, 165, 5)") {
-        $CheckStop = 1
+        # Nudge forward without toggling the state
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+x]"
+        Start-Sleep -Milliseconds 150
+
+        # Reset the gray streak AFTER the nudge so each Alt+x starts a fresh grace window
+        $allGrayStart = Get-Date
+
+        # Overrun tries beyond expected $Sell, even when we're seeing Gray
+        if ($Processed -ge $Sell) {
+            if ($OverrunLeft -gt 0) { $OverrunLeft-- } else { $CheckStop = 1; break }
+        }
+
+        # Popups (unchanged)
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
+            & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
+            Start-Sleep -Milliseconds 150
+        }
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
+            & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
+            Start-Sleep -Milliseconds 150
+        }
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
+            & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
+            Start-Sleep -Milliseconds 150
+        }
+
+        continue
     }
+    elseif ($cls.Result -eq 'Skip' -and $cls.Bucket -eq 'Loading') {
+        # ================================
+        # LOADING => likely MTM/overlay still present
+        # ================================
+        $loadingConsec++
+        Write-Host "#LOADING ($loadingConsec/$loadingConsecMax)"
 
-} Until (($CheckStop -eq 1))
+        # Try to explicitly close MTM while loading persists (no separate mtmBack scan)
+        & $Clavier /sendkeys "[{Focus,0,MTM*}][Alt+C]"
+        Start-Sleep -Milliseconds 150
+        # Also attempt via AppActivate; exceptions are acceptable in your setup
+        try { [Microsoft.VisualBasic.Interaction]::AppActivate("MTM") | Out-Null; [System.Windows.Forms.SendKeys]::SendWait("%C") } catch {}
 
-if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
-    & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
-    Start-sleep -Milliseconds 200
-}
-if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
-    & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
-    Start-sleep -Milliseconds 200
-}
-if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
-    & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
-    Start-sleep -Milliseconds 200
+        # brief wait to allow overlay to disappear on its own
+        Start-Sleep -Milliseconds 120
+
+        # If loading persists too long, fail safely to avoid reading the wrong pixel under MTM
+        if ($loadingConsec -ge $loadingConsecMax) {
+            Write-Host "SAFETY: Persistent loading color (241,243,241). Exiting to prevent runaway."
+            $CheckStop = 1
+            break
+        }
+
+        continue
+    }
+    else {
+        # ===================================
+        # Unknown/Timeout => conservative nudge (still subject to UnknownExitAfter above)
+        # ===================================
+        $loadingConsec = 0
+        # NOTE: Do NOT null out $allGrayStart before the nudge; we reset it AFTER Alt+x.
+
+        # Only Alt+x on unknown/timeout to avoid toggling state unnecessarily
+        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][Alt+x]"
+        Start-Sleep -Milliseconds 150
+
+        # Because we just nudged, reset the gray streak now so each Alt+x starts a fresh grace window
+        $allGrayStart = Get-Date
+
+        # Overrun applies here, too (so we stop after budget even without WHITE frames)
+        if ($Processed -ge $Sell) {
+            if ($OverrunLeft -gt 0) { $OverrunLeft-- } else { $CheckStop = 1; break }
+        }
+
+        # Popups (unchanged)
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
+            & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
+            Start-Sleep -Milliseconds 150
+        }
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
+            & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
+            Start-Sleep -Milliseconds 150
+        }
+        if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
+            & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
+            Start-Sleep -Milliseconds 150
+        }
+
+        continue
+    }
 }
 
 if ($CheckStop -eq 1) {
@@ -249,5 +621,3 @@ if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Enterprise Pharmacy 
     (New-Object Media.SoundPlayer $Audio).PlaySync()
 }
 else { continue }
-
-
