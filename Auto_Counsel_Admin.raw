@@ -599,7 +599,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
 
             # Wait for a stable classification at the locked absolute position
             Write-Host "#CHECK MTM"
-            $check = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 10 -StableReads 2 -SamplesPerRead 2 -Kernel 1 -SettleMs 10 -TimeoutMs 2000 -LogRaw
+            $check = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 5 -StableReads 2 -SamplesPerRead 1 -Kernel 1 -SettleMs 10 -TimeoutMs 1000 -LogRaw
 
             # Move once to the known relative point
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
@@ -617,15 +617,15 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
         # (Preserved original AppActivate logic)
         if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
             & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
-            Start-sleep -Milliseconds 400
+            Start-sleep -Milliseconds 300
         }
         if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
             & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
-            Start-sleep -Milliseconds 400
+            Start-sleep -Milliseconds 300
         }
         if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
             & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
-            Start-sleep -Milliseconds 400
+            Start-sleep -Milliseconds 300
         }
 
         if ($MTMSuccess -eq 1) {
@@ -652,7 +652,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
                 $skips   = @{ White   = [System.Drawing.Color]::FromArgb(251,251,251) }
 
                 Write-Host "#CHECK COUNSELING"
-                $cls1 = Wait-Pixel -X $anchor2.X -Y $anchor2.Y -Targets $targets -Skips $skips -Tolerance 20 -StableReads 2 -SamplesPerRead 2 -Kernel 3 -SettleMs 20 -TimeoutMs 300 -LogRaw
+                $cls1 = Wait-Pixel -X $anchor2.X -Y $anchor2.Y -Targets $targets -Skips $skips -Tolerance 20 -StableReads 2 -SamplesPerRead 1 -Kernel 3 -SettleMs 10 -TimeoutMs 200 -LogRaw
                 if ($cls1.Result -eq 'Success') { $isGreen = $true }
                 elseif ($cls1.Result -eq 'Skip') { $isWhite = $true }
             }
@@ -691,7 +691,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
                 $skips   = @{ White   = [System.Drawing.Color]::FromArgb(251,251,251) }
 
                 Write-Host "#CHECK COUNSELING 2"
-                $cls2 = Wait-Pixel -X $anchor3.X -Y $anchor3.Y -Targets $targets -Skips $skips -Tolerance 70 -StableReads 2 -SamplesPerRead 2 -Kernel 1 -SettleMs 10 -TimeoutMs 300 -LogRaw
+                $cls2 = Wait-Pixel -X $anchor3.X -Y $anchor3.Y -Targets $targets -Skips $skips -Tolerance 70 -StableReads 2 -SamplesPerRead 1 -Kernel 1 -SettleMs 10 -TimeoutMs 300 -LogRaw
                 if ($cls2.Result -eq 'Success') { $isGreen2 = $true }
                 elseif ($cls2.Result -eq 'Skip') { $isWhite2 = $true }
             }
