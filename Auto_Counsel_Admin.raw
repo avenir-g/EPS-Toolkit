@@ -519,7 +519,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
         Do {
             # Move pointer to the status pixel location
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,382,665}]"
-            Start-Sleep -Milliseconds 40
+            Start-Sleep -Milliseconds 60
 
             # --- BLUE-ONLY CHECK (ignore grey completely) ---
             $anchor = Wait-CursorStable -StableMs 50 -PollMs 20 -TimeoutMs 1000
@@ -551,12 +551,13 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
 
         #Start Counsel Loop
         & $Clavier /sendkeys "[Alt+O]"
-        Start-sleep -Milliseconds 300
+        Start-sleep -Milliseconds 800
         if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Error"))) {
             Write-Host "EXIT: ERROR"
             exit
         }
-        Start-sleep -Milliseconds 400
+
+        Start-sleep -Milliseconds 800
 
         #Check For Window "Multiple"
         $timeout1 = New-TimeSpan -Seconds 1
@@ -575,12 +576,15 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             }
         } Until ($Multiple -eq 1 -or ((Get-Date) -gt $endTime1))
 
+        Start-sleep -Milliseconds 400
+
         $MTMSuccess = 0
         $MTMSkip    = 0
+        $MTMTimeout = 0
 
         # Move once to the known relative point
         & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
-        Start-sleep -Milliseconds 40
+        Start-sleep -Milliseconds 60
 
         # Wait for pointer to stop moving and lock absolute X/Y
         $anchor = Wait-CursorStable -StableMs 50 -PollMs 25 -TimeoutMs 500
@@ -595,24 +599,26 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             $skips   = @{
                 Black = [System.Drawing.Color]::FromArgb(0,0,0)
                 Gray  = [System.Drawing.Color]::FromArgb(168,170,168)
+                Gray2  = [System.Drawing.Color]::FromArgb(178,179,178)
             }
-
-            # Wait for a stable classification at the locked absolute position
-            Write-Host "#CHECK MTM"
-            $check = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 5 -StableReads 2 -SamplesPerRead 1 -Kernel 1 -SettleMs 10 -TimeoutMs 1000 -LogRaw
 
             # Move once to the known relative point
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
             Start-sleep -Milliseconds 40
+
+            # Wait for a stable classification at the locked absolute position
+            Write-Host "#CHECK MTM"
+            $check = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 5 -StableReads 2 -SamplesPerRead 1 -Kernel 1 -SettleMs 10 -TimeoutMs 900 -LogRaw
+
             switch ($check.Result) {
                 'Success' { $MTMSuccess = 1
                 Write-Host "MTM Success!"}
                 'Skip'    { $MTMSkip    = 1 }
-                'Timeout' { $MTMSkip    = 1 }
+                'Timeout' { $MTMTimeout    = 1 }
             }
         }
 
-        Start-sleep -Milliseconds 100
+        Start-sleep -Milliseconds 500
 
         # (Preserved original AppActivate logic)
         if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
@@ -628,23 +634,31 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             Start-sleep -Milliseconds 300
         }
 
+        Start-sleep -Milliseconds 500
+
         if ($MTMSuccess -eq 1) {
-            Start-sleep -Milliseconds 300
+            Start-sleep -Milliseconds 400
             & $Clavier /sendkeys "[{Focus,0,MTM*}][Alt+C]"
-            Start-sleep -Milliseconds 100
+            Start-sleep -Milliseconds 300
         }
 
-        Start-sleep -Milliseconds 100
+        Start-sleep -Milliseconds 300
 
         #Counsel Next Check Loop
         $CheckStop = 0
         Do {
             #Check Status 1
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,189,385}]"
-            Start-sleep -Milliseconds 40
+            Start-sleep -Milliseconds 80
 
             # --- ROBUST COLOR CHECK (replaces string compare for green/white) ---
-            $anchor2 = Wait-CursorStable -StableMs 40 -PollMs 20 -TimeoutMs 200
+            $anchor2 = Wait-CursorStable -StableMs 40 -PollMs 20 -TimeoutMs 300
+            
+            if ($null -eq $anchor2) {
+                Write-Host "TIMEOUT: Wait-CursorStable (anchor2) timed out. Exiting..." -ForegroundColor Red
+                exit 408
+            }
+
             $isGreen = $false
             $isWhite = $false
             if ($anchor2) {
@@ -652,7 +666,13 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
                 $skips   = @{ White   = [System.Drawing.Color]::FromArgb(251,251,251) }
 
                 Write-Host "#CHECK COUNSELING"
-                $cls1 = Wait-Pixel -X $anchor2.X -Y $anchor2.Y -Targets $targets -Skips $skips -Tolerance 20 -StableReads 2 -SamplesPerRead 1 -Kernel 3 -SettleMs 10 -TimeoutMs 200 -LogRaw
+                $cls1 = Wait-Pixel -X $anchor2.X -Y $anchor2.Y -Targets $targets -Skips $skips -Tolerance 20 -StableReads 2 -SamplesPerRead 1 -Kernel 3 -SettleMs 10 -TimeoutMs 400 -LogRaw
+                
+                if ($null -eq $cls1 -or $cls1.Result -eq 'Timeout') {
+                    Write-Host "TIMEOUT: Wait-Pixel (cls1) timed out. Exiting..." -ForegroundColor Red
+                    exit 408
+                }
+
                 if ($cls1.Result -eq 'Success') { $isGreen = $true }
                 elseif ($cls1.Result -eq 'Skip') { $isWhite = $true }
             }
@@ -682,8 +702,14 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,189,385}]"
             Start-sleep -Milliseconds 10
 
-            # --- ROBUST COLOR CHECK (second sample mirrors your original logic) ---
+            # --- ROBUST COLOR CHECK 2 ---
             $anchor3 = Wait-CursorStable -StableMs 40 -PollMs 20 -TimeoutMs 300
+
+            if ($null -eq $anchor3) {
+                Write-Host "TIMEOUT: Wait-CursorStable (anchor3) timed out. Exiting..." -ForegroundColor Red
+                exit 408
+            }
+
             $isGreen2 = $false
             $isWhite2 = $false
             if ($anchor3) {
@@ -692,6 +718,12 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
 
                 Write-Host "#CHECK COUNSELING 2"
                 $cls2 = Wait-Pixel -X $anchor3.X -Y $anchor3.Y -Targets $targets -Skips $skips -Tolerance 70 -StableReads 2 -SamplesPerRead 1 -Kernel 1 -SettleMs 10 -TimeoutMs 300 -LogRaw
+                
+                if ($null -eq $cls2 -or $cls2.Result -eq 'Timeout') {
+                    Write-Host "TIMEOUT: Wait-Pixel (cls2) timed out. Exiting..." -ForegroundColor Red
+                    exit 408
+                }
+                
                 if ($cls2.Result -eq 'Success') { $isGreen2 = $true }
                 elseif ($cls2.Result -eq 'Skip') { $isWhite2 = $true }
             }
