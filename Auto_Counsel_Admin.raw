@@ -216,9 +216,9 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-type -AssemblyName microsoft.VisualBasic
 
-# --------------------
-# FORM (WPF/XAML) — uniform 10px spacing + hold-to-reveal password
-# --------------------
+# ---------------
+# FORM (WPF/XAML)
+# ---------------
 
 # Font fallback like the sample
 try {
@@ -559,68 +559,136 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
 
         Start-sleep -Milliseconds 800
 
-        #Check For Window "Multiple"
-        $timeout1 = New-TimeSpan -Seconds 1
-        $endTime1 = (Get-Date).Add($timeout1)
-        $Multiple = 0
+        # Check For Window "Multiple/MTM/Counseling"
+        $endTime1 = (Get-Date).AddMilliseconds(1200)
+
+        $SkipMtmPixelCheck = 0
+        $FoundOne = 0
+
         Do {
-            if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Multiple"))) {
-                #Click Yes
+            # ----------------
+            # MULTIPLE SECTION
+            # ----------------
+            try {
+                [Microsoft.VisualBasic.Interaction]::AppActivate("Multiple") | Out-Null
+
+                Write-Host "Found Multiple!"
+
+                # Click Yes
                 & $Clavier /sendkeys "[{Focus,0,Multiple*}][Alt+Y]"
-                Start-sleep -Milliseconds 400
+                Start-Sleep -Milliseconds 150
 
-                #Select All and Continue
+                # Select All and Continue
                 & $Clavier /sendkeys "[{Focus,0,Multiple*}][Alt+A][][Alt+S]"
-                Start-sleep -Milliseconds 400
-                $Multiple = 1
-            }
-        } Until ($Multiple -eq 1 -or ((Get-Date) -gt $endTime1))
+                Start-Sleep -Milliseconds 600
 
-        Start-sleep -Milliseconds 400
+                $FoundOne = 1
+                break
+            } catch { }
+
+            # -----------
+            # MTM SECTION
+            # -----------
+            if ($SkipMtmPixelCheck -eq 0) {
+                try {
+                    [Microsoft.VisualBasic.Interaction]::AppActivate("MTM") | Out-Null
+
+                    Write-Host "Found MTM!"
+
+                    & $Clavier /sendkeys "[{Focus,0,MTM*}][Alt+C]"
+                    Start-Sleep -Milliseconds 200
+
+                    $SkipMtmPixelCheck = 1
+                    $FoundOne = 1
+                    break
+                } catch { }
+            }
+
+            # ------------------
+            # COUNSELING SECTION
+            # ------------------
+            try {
+                [Microsoft.VisualBasic.Interaction]::AppActivate("Counseling") | Out-Null
+
+                Write-Host "Found Counseling!"
+
+                & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
+                Start-Sleep -Milliseconds 200
+
+                $FoundOne = 1
+                break
+            } catch { }
+
+            # -----------------------
+            # Nothing found this pass
+            # -----------------------
+            if ((Get-Date) -ge $endTime1) { break }
+            Start-Sleep -Milliseconds 50
+
+        } while ($true)
+
+        # Safety: if nothing appeared in time, you can decide what to do
+        if (-not $FoundOne) {
+            Write-Host "TIMEOUT: No popup found. Continue" -ForegroundColor Yellow
+        }
+
+        
+        # -----------------
+        # MTM CHECK SECTION
+        # -----------------
 
         $MTMSuccess = 0
         $MTMSkip    = 0
         $MTMTimeout = 0
 
-        # Move once to the known relative point
-        & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
-        Start-sleep -Milliseconds 60
+        if ($SkipMtmPixelCheck -eq 1) {
 
-        # Wait for pointer to stop moving and lock absolute X/Y
-        $anchor = Wait-CursorStable -StableMs 50 -PollMs 25 -TimeoutMs 500
-        if (-not $anchor) {
-            # If the pointer never stabilizes
-            $MTMSkip = 1 
-            exit
+            Write-Host "Skipping MTM Check"
+            Start-Sleep -Milliseconds 250
+
         } else {
-            # Define the colors (with tolerance)
-
-            $targets = @{ MTMGreen = [System.Drawing.Color]::FromArgb(0,178,0) }
-            $skips   = @{
-                Black = [System.Drawing.Color]::FromArgb(0,0,0)
-                Gray  = [System.Drawing.Color]::FromArgb(168,170,168)
-                Gray2  = [System.Drawing.Color]::FromArgb(178,179,178)
-            }
 
             # Move once to the known relative point
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
-            Start-sleep -Milliseconds 40
+            Start-sleep -Milliseconds 60
 
-            # Wait for a stable classification at the locked absolute position
-            Write-Host "#CHECK MTM"
-            $check = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 5 -StableReads 2 -SamplesPerRead 1 -Kernel 1 -SettleMs 10 -TimeoutMs 900 -LogRaw
+            # Wait for pointer to stop moving and lock absolute X/Y
+            $anchor = Wait-CursorStable -StableMs 50 -PollMs 25 -TimeoutMs 500
+            if (-not $anchor) {
+                # If the pointer never stabilizes
+                $MTMSkip = 1
+                exit
+            } else {
+                # Define the colors (with tolerance)
+                $targets = @{ MTMGreen = [System.Drawing.Color]::FromArgb(0,178,0) }
+                $skips   = @{
+                    Black = [System.Drawing.Color]::FromArgb(0,0,0)
+                    Gray  = [System.Drawing.Color]::FromArgb(168,170,168)
+                    Gray2 = [System.Drawing.Color]::FromArgb(178,179,178)
+                }
 
-            switch ($check.Result) {
-                'Success' { $MTMSuccess = 1
-                Write-Host "MTM Success!"}
-                'Skip'    { $MTMSkip    = 1 }
-                'Timeout' { $MTMTimeout    = 1 }
+                # Move once to the known relative point (same as your current flow)
+                & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,701,692}]"
+                Start-sleep -Milliseconds 40
+
+                # Wait for a stable classification at the locked absolute position
+                Write-Host "#CHECK MTM"
+
+                $check = Wait-Pixel -X $anchor.X -Y $anchor.Y -Targets $targets -Skips $skips -Tolerance 5 -StableReads 2 -SamplesPerRead 1 -Kernel 1 -SettleMs 10 -TimeoutMs 900 -LogRaw
+
+                switch ($check.Result) {
+                    'Success' {
+                        $MTMSuccess = 1
+                        Write-Host "MTM Success!"
+                    }
+                    'Skip'    { $MTMSkip    = 1 }
+                    'Timeout' { $MTMTimeout = 1 }
+                }
             }
+
+            Start-sleep -Milliseconds 500
         }
 
-        Start-sleep -Milliseconds 500
-
-        # (Preserved original AppActivate logic)
         if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
             & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
             Start-sleep -Milliseconds 300
@@ -639,7 +707,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
         if ($MTMSuccess -eq 1) {
             Start-sleep -Milliseconds 400
             & $Clavier /sendkeys "[{Focus,0,MTM*}][Alt+C]"
-            Start-sleep -Milliseconds 300
+            Start-sleep -Milliseconds 200
         }
 
         Start-sleep -Milliseconds 300
@@ -651,7 +719,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,189,385}]"
             Start-sleep -Milliseconds 80
 
-            # --- ROBUST COLOR CHECK (replaces string compare for green/white) ---
+            # --- ROBUST COLOR CHECK ---
             $anchor2 = Wait-CursorStable -StableMs 40 -PollMs 20 -TimeoutMs 300
             
             if ($null -eq $anchor2) {
@@ -666,7 +734,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
                 $skips   = @{ White   = [System.Drawing.Color]::FromArgb(251,251,251) }
 
                 Write-Host "#CHECK COUNSELING"
-                $cls1 = Wait-Pixel -X $anchor2.X -Y $anchor2.Y -Targets $targets -Skips $skips -Tolerance 20 -StableReads 2 -SamplesPerRead 1 -Kernel 3 -SettleMs 10 -TimeoutMs 400 -LogRaw
+                $cls1 = Wait-Pixel -X $anchor2.X -Y $anchor2.Y -Targets $targets -Skips $skips -Tolerance 20 -StableReads 1 -SamplesPerRead 1 -Kernel 3 -SettleMs 10 -TimeoutMs 400 -LogRaw
                 
                 if ($null -eq $cls1 -or $cls1.Result -eq 'Timeout') {
                     Write-Host "TIMEOUT: Wait-Pixel (cls1) timed out. Exiting..." -ForegroundColor Red
@@ -689,21 +757,21 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
             Start-sleep -Milliseconds 200
             if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
                 & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
-                Start-sleep -Milliseconds 300
+                Start-sleep -Milliseconds 200
             }
             if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
                 & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
-                Start-sleep -Milliseconds 300
+                Start-sleep -Milliseconds 200
             }
             if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
                 & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
-                Start-sleep -Milliseconds 300
+                Start-sleep -Milliseconds 200
             }
             & $Clavier /sendkeys "[{Focus,0,*EPS/*}][{MouseMoveToFocus,189,385}]"
             Start-sleep -Milliseconds 10
 
             # --- ROBUST COLOR CHECK 2 ---
-            $anchor3 = Wait-CursorStable -StableMs 40 -PollMs 20 -TimeoutMs 300
+            $anchor3 = Wait-CursorStable -StableMs 40 -PollMs 20 -TimeoutMs 200
 
             if ($null -eq $anchor3) {
                 Write-Host "TIMEOUT: Wait-CursorStable (anchor3) timed out. Exiting..." -ForegroundColor Red
@@ -717,7 +785,7 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
                 $skips   = @{ White   = [System.Drawing.Color]::FromArgb(251,251,251) }
 
                 Write-Host "#CHECK COUNSELING 2"
-                $cls2 = Wait-Pixel -X $anchor3.X -Y $anchor3.Y -Targets $targets -Skips $skips -Tolerance 70 -StableReads 2 -SamplesPerRead 1 -Kernel 1 -SettleMs 10 -TimeoutMs 300 -LogRaw
+                $cls2 = Wait-Pixel -X $anchor3.X -Y $anchor3.Y -Targets $targets -Skips $skips -Tolerance 70 -StableReads 1 -SamplesPerRead 1 -Kernel 1 -SettleMs 10 -TimeoutMs 200 -LogRaw
                 
                 if ($null -eq $cls2 -or $cls2.Result -eq 'Timeout') {
                     Write-Host "TIMEOUT: Wait-Pixel (cls2) timed out. Exiting..." -ForegroundColor Red
@@ -742,18 +810,18 @@ if ($result6 -eq [System.Windows.Forms.DialogResult]::OK) {
 
         } Until (($CheckStop -eq 1))
 
-        Start-sleep -Milliseconds 400
+        Start-sleep -Milliseconds 200
         if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Information"))) {
             & $Clavier /sendkeys "[{Focus,0,Information*}][ENTER]"
-            Start-sleep -Milliseconds 400
+            Start-sleep -Milliseconds 200
         }
         if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Message"))) {
             & $Clavier /sendkeys "[{Focus,0,Message*}][ENTER]"
-            Start-sleep -Milliseconds 400
+            Start-sleep -Milliseconds 200
         }
         if (-not ([Microsoft.VisualBasic.Interaction]::AppActivate("Counseling"))) {
             & $Clavier /sendkeys "[{Focus,0,Counseling*}][ENTER][][{Focus,0,Message*}][ENTER][]"
-            Start-sleep -Milliseconds 400
+            Start-sleep -Milliseconds 200
         }
 
         if ($CheckStop -eq 1) {
